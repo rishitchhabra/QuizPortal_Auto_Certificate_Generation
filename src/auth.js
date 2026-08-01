@@ -2,9 +2,26 @@ import { getAdminConfig, saveAdminConfig, getAuthSession, setAuthSession, clearA
 
 // SHA-256 hash
 export async function hashPassword(password) {
-  const data = new TextEncoder().encode(password);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  // Use Web Crypto when available (requires secure context). Otherwise
+  // fall back to a small deterministic JS hash so the app still works
+  // on non-HTTPS hosts or IP addresses during development.
+  try {
+    if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
+      const data = new TextEncoder().encode(password);
+      const buf = await window.crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) {
+    console.warn('Web Crypto unavailable, using fallback hash:', e);
+  }
+
+  // Fallback: DJB2-like hash (deterministic, not cryptographically secure)
+  let h = 5381;
+  for (let i = 0; i < password.length; i++) {
+    h = ((h << 5) + h) + password.charCodeAt(i);
+    h = h >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
 }
 
 // Admin Setup (first time)
