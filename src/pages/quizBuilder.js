@@ -252,15 +252,53 @@ function sync(app) {
   });
 }
 
+function validateQuiz(app) {
+  sync(app);
+  for (let i = 0; i < currentQuiz.questions.length; i++) {
+    const q = currentQuiz.questions[i];
+    const qNum = i + 1;
+    if (!q || !q.text || q.text.trim() === '') {
+      window.alert(`Question ${qNum} is empty. Please enter the question text.`);
+      showToast(`Question ${qNum} text is empty`, 'error');
+      return false;
+    }
+    if (q.type === 'mcq') {
+      if (!q.options || q.options.length < 2) {
+        window.alert(`Question ${qNum} must have at least 2 options.`);
+        showToast(`Question ${qNum} needs at least 2 options`, 'error');
+        return false;
+      }
+      if (q.correctAnswer === '' || q.correctAnswer === undefined || q.correctAnswer === null) {
+        window.alert(`Please mark a correct answer for Question ${qNum}.`);
+        showToast(`Mark correct answer for question ${qNum}`, 'error');
+        return false;
+      }
+      const idx = parseInt(q.correctAnswer);
+      if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
+        window.alert(`Question ${qNum} has an invalid correct answer selection.`);
+        showToast(`Invalid correct answer for question ${qNum}`, 'error');
+        return false;
+      }
+    } else if (q.type === 'tf') {
+      if (q.correctAnswer !== 'true' && q.correctAnswer !== 'false') {
+        window.alert(`Please select True or False as the correct answer for Question ${qNum}.`);
+        showToast(`Select correct True/False for question ${qNum}`, 'error');
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function bindEvents(app) {
   app.querySelector('#btn-save')?.addEventListener('click', () => {
-    sync(app);
+    if (!validateQuiz(app)) return;
     saveQuiz(currentQuiz);
     showToast('Quiz saved! 💾');
   });
 
   app.querySelector('#btn-toggle-live')?.addEventListener('click', () => {
-    sync(app);
+    if (!validateQuiz(app)) return;
     currentQuiz.isPublished = !currentQuiz.isPublished;
     saveQuiz(currentQuiz);
     showToast(currentQuiz.isPublished ? 'Quiz status set to LIVE! 🚀' : 'Quiz stopped (Inactive)');
@@ -268,7 +306,7 @@ function bindEvents(app) {
   });
 
   app.querySelector('#btn-preview')?.addEventListener('click', () => {
-    sync(app);
+    if (!validateQuiz(app)) return;
     saveQuiz(currentQuiz);
     window.location.hash = '#/take/' + currentQuiz.id;
   });
