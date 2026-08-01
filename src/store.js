@@ -162,7 +162,6 @@ export function setAuthSession(data) { sessionStorage.setItem(AUTH_KEY, JSON.str
 export function clearAuthSession() { sessionStorage.removeItem(AUTH_KEY); }
 
 // Google User Session (for quiz takers)
-const GUSER_KEY = 'sciquiz_guser';
 export function getGoogleUser() {
   try { const r = sessionStorage.getItem(GUSER_KEY); return r ? JSON.parse(r) : null; }
   catch { return null; }
