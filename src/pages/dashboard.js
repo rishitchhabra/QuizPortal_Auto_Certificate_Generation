@@ -88,12 +88,11 @@ export function renderDashboard(app) {
     }
     val = val.split('/')[0].split('?')[0];
 
-    const quiz = getQuiz(val);
-    if (!quiz) {
-      showToast(`Quiz with ID "${val}" not found. Check your link.`, 'error');
-      return;
-    }
-    window.location.hash = `#/take/${quiz.id}`;
+    (async () => {
+      const quiz = await getQuiz(val);
+      if (!quiz) { showToast(`Quiz with ID "${val}" not found. Check your link.`, 'error'); return; }
+      window.location.hash = `#/take/${quiz.id}`;
+    })();
   };
 
   joinBtn.addEventListener('click', executeJoin);

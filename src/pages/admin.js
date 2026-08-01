@@ -1,13 +1,33 @@
 import { 
   getAdminConfig, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
-  getAllCertTemplates, deleteCertTemplate 
+  getAllCertTemplates, deleteCertTemplate, getIdToken, setAuthSession
 } from '../store.js';
 import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard } from '../utils.js';
-import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
+import { adminLogout, isAdminLoggedIn, initGoogleAuth, renderGoogleButton, hashPassword } from '../auth.js';
 
-export function renderAdminLogin(app) {
-  const cfg = getAdminConfig();
-  const needsSetup = !cfg.isSetup;
+const SERVER_BASE = window.SERVER_BASE || '';
+
+async function apiFetch(path, opts = {}) {
+  const headers = opts.headers || {};
+  const token = getIdToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (SERVER_BASE) return fetch(`${SERVER_BASE}${path}`, { ...opts, headers });
+  // no server: fallback to local operations (not implemented here)
+  return Promise.reject(new Error('No server'));
+}
+
+export async function renderAdminLogin(app) {
+  // Fetch server config to get Google Client ID if available
+  let clientId = '';
+  try {
+    if (SERVER_BASE) {
+      const r = await fetch(`${SERVER_BASE}/api/config`);
+      if (r.ok) {
+        const cfg = await r.json();
+        clientId = cfg.googleClientId || '';
+      }
+    }
+  } catch (e) { console.warn('Could not fetch server config', e); }
 
   app.innerHTML = `
     ${renderNavbar()}
@@ -17,75 +37,54 @@ export function renderAdminLogin(app) {
           <div style="text-align:center; margin-bottom: 0.75rem">
             <img src="logo.png" alt="Logo" style="height: 65px; object-fit: contain">
           </div>
-          <h2 style="text-align:center; margin-bottom: 0.25rem; font-weight: 800; font-size: 1.75rem">
-            ${needsSetup ? 'Gyan Admin Setup' : 'Gyan Admin Portal'}
-          </h2>
-          <p style="text-align:center; color: var(--text-sub); font-size: 0.9rem; margin-bottom: 2rem">
-            ${needsSetup ? 'Create your master admin ID and password.' : 'Enter your admin credentials.'}
-          </p>
-          
-          <div class="form-group">
-            <label class="form-label">Admin ID</label>
-            <input type="text" class="form-input" id="admin-id" value="${needsSetup ? 'admin' : ''}" placeholder="Enter Admin ID">
-          </div>
-          
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" class="form-input" id="admin-pass" placeholder="Enter Password">
-          </div>
-          
-          ${needsSetup ? `
-            <div class="form-group">
-              <label class="form-label">Confirm Password</label>
-              <input type="password" class="form-input" id="admin-pass2" placeholder="Confirm Password">
-            </div>
-          ` : ''}
-          
-          <button class="btn btn-primary btn-lg" style="width: 100%; margin-top: 0.5rem" id="btn-admin-submit">
-            ${needsSetup ? '🚀 Setup Admin Portal' : '🔓 Login to Admin Portal'}
-          </button>
+          <h2 style="text-align:center; margin-bottom: 0.25rem; font-weight: 800; font-size: 1.75rem">Gyan Admin Login</h2>
+          <p style="text-align:center; color: var(--text-sub); font-size: 0.9rem; margin-bottom: 2rem">Sign in with your Google account to access admin controls.</p>
+          <div id="admin-google-btn" style="display:flex; justify-content:center"></div>
         </div>
       </div>
     </div>
   `;
 
-  app.querySelector('#btn-admin-submit').addEventListener('click', async () => {
-    const id = app.querySelector('#admin-id').value.trim();
-    const pass = app.querySelector('#admin-pass').value;
-    if (!id || !pass) { showToast('Please fill all fields', 'error'); return; }
-
-    if (needsSetup) {
-      const pass2 = app.querySelector('#admin-pass2').value;
-      if (pass !== pass2) { showToast('Passwords do not match', 'error'); return; }
-      if (pass.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; }
-      await setupAdmin(id, pass);
-      showToast('Admin setup complete! Welcome 🎉');
-      window.location.hash = '#/admin';
-    } else {
-      const ok = await adminLogin(id, pass);
-      if (ok) {
-        showToast('Welcome back Admin!');
+  // Use provided clientId (server) or fall back to local admin config
+  if (!clientId) clientId = getAdminConfig().googleClientId || '';
+  const onSignIn = async (user) => {
+    // After sign-in, check server config for admin emails
+    try {
+      let allowed = false;
+      let adminEmails = [];
+      if (SERVER_BASE) {
+        const r = await fetch(`${SERVER_BASE}/api/config`);
+        if (r.ok) {
+          const cfg = await r.json();
+          adminEmails = cfg.adminEmails || [];
+        }
+      } else {
+        adminEmails = getAdminConfig().adminEmails || [];
+      }
+      if (adminEmails.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
+        // mark session as admin
+        setAuthSession({ type: 'admin', id: user.email });
+        showToast('Welcome, Admin!');
         window.location.hash = '#/admin';
       } else {
-        showToast('Invalid ID or Password', 'error');
+        showToast('Your Google account is not authorized as admin', 'error');
       }
-    }
-  });
+    } catch (e) { showToast('Sign-in error', 'error'); console.error(e); }
+  };
 
-  app.querySelector('#admin-pass').addEventListener('keydown', e => {
-    if (e.key === 'Enter') app.querySelector('#btn-admin-submit').click();
-  });
+  initGoogleAuth(clientId, onSignIn);
+  setTimeout(() => renderGoogleButton('admin-google-btn', clientId), 200);
 }
 
-export function renderAdminPanel(app) {
+export async function renderAdminPanel(app) {
   if (!isAdminLoggedIn()) {
     window.location.hash = '#/admin-login';
     return;
   }
 
   const cfg = getAdminConfig();
-  const quizzes = getAllQuizzes();
-  const templates = getAllCertTemplates();
+  const quizzes = await getAllQuizzes();
+  const templates = await getAllCertTemplates();
 
   app.innerHTML = `
     ${renderNavbar()}
@@ -121,7 +120,7 @@ export function renderAdminPanel(app) {
 
           ${quizzes.length > 0 ? `
             <div class="grid grid-2">
-              ${quizzes.map(q => renderAdminQuizCard(q)).join('')}
+              ` + (await Promise.all(quizzes.map(async q => renderAdminQuizCard(q, (await getSubmissions(q.id)).length)))).join('') + `
             </div>
           ` : `
             <div class="clay-card" style="text-align:center; padding: 3rem">
@@ -324,8 +323,7 @@ export function renderAdminPanel(app) {
   });
 }
 
-function renderAdminQuizCard(quiz) {
-  const subs = getSubmissions(quiz.id);
+function renderAdminQuizCard(quiz, subsCount) {
   const qCount = quiz.questions?.length || 0;
   const totalPts = quiz.questions?.reduce((s, q) => s + (q.points || 1), 0) || 0;
   const isLive = quiz.isPublished;
@@ -355,7 +353,7 @@ function renderAdminQuizCard(quiz) {
           <span>📋 ${qCount} Questions</span>
           <span>⭐ ${totalPts} Points</span>
           <span>⏱️ ${quiz.timerMinutes || 30} min</span>
-          <span>👥 ${subs.length} Responses</span>
+          <span>👥 ${subsCount || 0} Responses</span>
           <span>⏰ ${deadlineTxt}</span>
         </div>
       </div>
@@ -366,7 +364,7 @@ function renderAdminQuizCard(quiz) {
         </button>
         <a href="#/edit/${quiz.id}" class="btn btn-secondary btn-sm">✏️ Edit</a>
         <button class="btn btn-secondary btn-sm share-quiz" data-id="${quiz.id}">🔗 Copy Link</button>
-        <a href="#/responses/${quiz.id}" class="btn btn-secondary btn-sm">📊 Responses (${subs.length})</a>
+        <a href="#/responses/${quiz.id}" class="btn btn-secondary btn-sm">📊 Responses (${subsCount || 0})</a>
         <button class="btn btn-danger btn-sm del-quiz" data-id="${quiz.id}" style="margin-left:auto">🗑️</button>
       </div>
     </div>

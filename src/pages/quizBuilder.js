@@ -4,12 +4,12 @@ import { requireAdmin } from '../auth.js';
 
 let currentQuiz = null;
 
-export function renderQuizBuilder(app, params) {
+export async function renderQuizBuilder(app, params) {
   if (!requireAdmin()) return;
 
   const quizId = params[0];
   if (quizId) {
-    currentQuiz = getQuiz(quizId);
+    currentQuiz = await getQuiz(quizId);
     if (!currentQuiz) { window.location.hash = '#/admin'; return; }
   } else {
     currentQuiz = {
@@ -32,11 +32,11 @@ export function renderQuizBuilder(app, params) {
       createdAt: new Date().toISOString()
     };
   }
-  renderPage(app);
+  await renderPage(app);
 }
 
-function renderPage(app) {
-  const certs = getAllCertTemplates();
+async function renderPage(app) {
+  const certs = await getAllCertTemplates();
 
   app.innerHTML = `
     ${renderNavbar()}

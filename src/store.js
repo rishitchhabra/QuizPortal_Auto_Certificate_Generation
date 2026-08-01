@@ -1,6 +1,12 @@
 const STORE_KEY = 'sciquiz_data';
 const ADMIN_KEY = 'sciquiz_admin';
 const AUTH_KEY = 'sciquiz_auth';
+const GUSER_KEY = 'sciquiz_guser';
+const GTOKEN_KEY = 'sciquiz_gtoken';
+
+// Server base (if server is running on same host but different port, set
+// window.SERVER_BASE = 'http://your-vps:3001' in a small script or env.
+const SERVER_BASE = window.SERVER_BASE || '';
 
 function getDefaultStore() { return { quizzes: [], submissions: [], certificateTemplates: [] }; }
 
@@ -13,28 +19,123 @@ export function generateId() { return Date.now().toString(36) + Math.random().to
 
 // Quiz CRUD
 export function saveQuiz(quiz) {
+  // Try server first, fallback to localStorage
+  if (SERVER_BASE) {
+    try {
+      const url = quiz.id ? `${SERVER_BASE}/api/quizzes/${quiz.id}` : `${SERVER_BASE}/api/quizzes`;
+      const headers = { 'Content-Type': 'application/json' };
+      try { const t = getIdToken(); if (t) headers['Authorization'] = 'Bearer ' + t; } catch (e) {}
+      const opts = { method: quiz.id ? 'PUT' : 'POST', headers, body: JSON.stringify(quiz) };
+      fetch(url, opts).then(r => r.json()).catch(() => {
+        const s = loadStore(); const i = s.quizzes.findIndex(q => q.id === quiz.id);
+        if (i >= 0) s.quizzes[i] = quiz; else s.quizzes.push(quiz); saveStore(s);
+      });
+      return quiz;
+    } catch (e) { /* fallback */ }
+  }
   const s = loadStore(); const i = s.quizzes.findIndex(q => q.id === quiz.id);
   if (i >= 0) s.quizzes[i] = quiz; else s.quizzes.push(quiz); saveStore(s); return quiz;
 }
-export function getQuiz(id) { return loadStore().quizzes.find(q => q.id === id) || null; }
-export function getAllQuizzes() { return loadStore().quizzes; }
-export function deleteQuiz(id) { const s = loadStore(); s.quizzes = s.quizzes.filter(q => q.id !== id); saveStore(s); }
+export async function getQuiz(id) {
+  if (SERVER_BASE) {
+    try {
+      const r = await fetch(`${SERVER_BASE}/api/quizzes/${id}`);
+      if (r.status === 200) return await r.json();
+      return null;
+    } catch (e) { /* fallback */ }
+  }
+  return loadStore().quizzes.find(q => q.id === id) || null;
+}
+export async function getAllQuizzes() {
+  if (SERVER_BASE) {
+    try {
+      const r = await fetch(`${SERVER_BASE}/api/quizzes`);
+      if (r.status === 200) return await r.json();
+      return loadStore().quizzes;
+    } catch (e) { /* fallback */ }
+  }
+  return loadStore().quizzes;
+}
+export function deleteQuiz(id) {
+  if (SERVER_BASE) {
+    try {
+      const headers = {};
+      try { const t = getIdToken(); if (t) headers['Authorization'] = 'Bearer ' + t; } catch (e) {}
+      fetch(`${SERVER_BASE}/api/quizzes/${id}`, { method: 'DELETE', headers }).catch(() => {
+      const s = loadStore(); s.quizzes = s.quizzes.filter(q => q.id !== id); saveStore(s);
+      });
+    } catch (e) { /* ignore */ }
+    return;
+  }
+  const s = loadStore(); s.quizzes = s.quizzes.filter(q => q.id !== id); saveStore(s);
+}
 
 // Submissions
-export function saveSubmission(sub) { const s = loadStore(); s.submissions.push(sub); saveStore(s); return sub; }
-export function getSubmissions(quizId) { return loadStore().submissions.filter(s => s.quizId === quizId); }
+export async function saveSubmission(sub) {
+  if (SERVER_BASE) {
+    try {
+      const r = await fetch(`${SERVER_BASE}/api/submissions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sub) });
+      return await r.json();
+    } catch (e) { /* fallback */ }
+  }
+  const s = loadStore(); s.submissions.push(sub); saveStore(s); return sub;
+}
+export async function getSubmissions(quizId) {
+  if (SERVER_BASE) {
+    try {
+      const r = await fetch(`${SERVER_BASE}/api/submissions?quizId=${encodeURIComponent(quizId)}`);
+      if (r.status === 200) return await r.json();
+    } catch (e) { /* fallback */ }
+  }
+  return loadStore().submissions.filter(s => s.quizId === quizId);
+}
 export function getSubmissionsByEmail(quizId, email) {
   return loadStore().submissions.filter(s => s.quizId === quizId && s.participant?.email === email);
 }
 
 // Certificate Templates
 export function saveCertTemplate(t) {
+  if (SERVER_BASE) {
+    try {
+      const url = t.id ? `${SERVER_BASE}/api/cert-templates/${t.id}` : `${SERVER_BASE}/api/cert-templates`;
+      const headers = { 'Content-Type': 'application/json' };
+      try { const tt = getIdToken(); if (tt) headers['Authorization'] = 'Bearer ' + tt; } catch (e) {}
+      const opts = { method: t.id ? 'PUT' : 'POST', headers, body: JSON.stringify(t) };
+      fetch(url, opts).then(r => r.json()).catch(() => {
+        const s = loadStore(); const i = s.certificateTemplates.findIndex(x => x.id === t.id);
+        if (i >= 0) s.certificateTemplates[i] = t; else s.certificateTemplates.push(t); saveStore(s);
+      });
+      return t;
+    } catch (e) { /* fallback */ }
+  }
   const s = loadStore(); const i = s.certificateTemplates.findIndex(x => x.id === t.id);
   if (i >= 0) s.certificateTemplates[i] = t; else s.certificateTemplates.push(t); saveStore(s); return t;
 }
-export function getCertTemplate(id) { return loadStore().certificateTemplates.find(t => t.id === id) || null; }
-export function getAllCertTemplates() { return loadStore().certificateTemplates; }
-export function deleteCertTemplate(id) { const s = loadStore(); s.certificateTemplates = s.certificateTemplates.filter(t => t.id !== id); saveStore(s); }
+export async function getCertTemplate(id) {
+  if (SERVER_BASE) {
+    try { const r = await fetch(`${SERVER_BASE}/api/cert-templates`); if (r.status === 200) { const all = await r.json(); return all.find(t => t.id === id) || null; } } catch (e) {}
+  }
+  return loadStore().certificateTemplates.find(t => t.id === id) || null;
+}
+export async function getAllCertTemplates() {
+  if (SERVER_BASE) {
+    try { const r = await fetch(`${SERVER_BASE}/api/cert-templates`); if (r.status === 200) return await r.json(); } catch (e) {}
+  }
+  return loadStore().certificateTemplates;
+}
+export function deleteCertTemplate(id) {
+  if (SERVER_BASE) {
+    try {
+      const headers = {};
+      try { const tt = getIdToken(); if (tt) headers['Authorization'] = 'Bearer ' + tt; } catch (e) {}
+      fetch(`${SERVER_BASE}/api/cert-templates/${id}`, { method: 'DELETE', headers }).catch(() => {
+      const s = loadStore(); s.certificateTemplates = s.certificateTemplates.filter(t => t.id !== id); saveStore(s);
+      });
+    } catch (e) { /* ignore */ }
+    return;
+  }
+  const s = loadStore(); s.certificateTemplates = s.certificateTemplates.filter(t => t.id !== id); saveStore(s);
+}
 
 // Admin Config
 function getDefaultAdmin() {
@@ -45,6 +146,12 @@ export function getAdminConfig() {
   catch { return getDefaultAdmin(); }
 }
 export function saveAdminConfig(cfg) { localStorage.setItem(ADMIN_KEY, JSON.stringify(cfg)); }
+
+// Google user token helpers
+export function getIdToken() {
+  try { return sessionStorage.getItem(GTOKEN_KEY) || null; } catch { return null; }
+}
+export function setIdToken(t) { try { sessionStorage.setItem(GTOKEN_KEY, t); } catch {} }
 
 // Auth Session
 export function getAuthSession() {
@@ -60,5 +167,5 @@ export function getGoogleUser() {
   try { const r = sessionStorage.getItem(GUSER_KEY); return r ? JSON.parse(r) : null; }
   catch { return null; }
 }
-export function setGoogleUser(u) { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); }
-export function clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); }
+export function setGoogleUser(u) { try { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); } catch {} }
+export function ₹clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); sessionStorage.removeItem(GTOKEN_KEY); }

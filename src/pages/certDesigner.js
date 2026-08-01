@@ -4,12 +4,12 @@ import { requireAdmin } from '../auth.js';
 
 let template = null, selectedId = null, isDragging = false, dragStart = { x: 0, y: 0 }, elStart = { x: 0, y: 0 };
 
-export function renderCertDesigner(app, params) {
+export async function renderCertDesigner(app, params) {
   if (!requireAdmin()) return;
 
   const id = params[0];
   if (id && id !== 'new') {
-    template = getCertTemplate(id);
+    template = await getCertTemplate(id);
     if (!template) { window.location.hash = '#/admin'; return; }
   } else if (id === 'new') {
     template = defaultTemplate();

@@ -5,9 +5,9 @@ import { initGoogleAuth, renderGoogleButton, getGoogleClientId } from '../auth.j
 let quiz = null, participant = {}, answers = {};
 let timerInterval = null, timeLeft = 0, quizStarted = false, quizSubmitted = false;
 
-export function renderTakeQuiz(app, params) {
+export async function renderTakeQuiz(app, params) {
   const quizId = params[0];
-  quiz = getQuiz(quizId);
+  quiz = await getQuiz(quizId);
 
   if (!quiz) {
     app.innerHTML = `${renderNavbar()}
@@ -382,10 +382,11 @@ function submitQuiz() {
 
 function renderResults(submission) {
   const app = document.getElementById('app');
-  const certTemplate = quiz.certificateTemplateId ? getCertTemplate(quiz.certificateTemplateId) : null;
-  const showCert = submission.passed && certTemplate;
+  (async () => {
+    const certTemplate = quiz.certificateTemplateId ? await getCertTemplate(quiz.certificateTemplateId) : null;
+    const showCert = submission.passed && certTemplate;
 
-  app.innerHTML = `${renderNavbar()}
+    app.innerHTML = `${renderNavbar()}
     <div class="page fade-in">
       <div class="container-sm">
         
@@ -426,10 +427,11 @@ function renderResults(submission) {
       </div>
     </div>`;
 
-  if (showCert && certTemplate) {
-    renderCertificate(certTemplate, submission);
-    app.querySelector('#btn-download-cert')?.addEventListener('click', () => downloadCertPDF());
-  }
+    if (showCert && certTemplate) {
+      renderCertificate(certTemplate, submission);
+      app.querySelector('#btn-download-cert')?.addEventListener('click', () => downloadCertPDF());
+    }
+  })();
 }
 
 function renderCertificate(template, submission) {

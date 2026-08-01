@@ -2,14 +2,14 @@ import { getQuiz, getSubmissions } from '../store.js';
 import { renderNavbar, formatTime, escapeHtml } from '../utils.js';
 import { requireAdmin } from '../auth.js';
 
-export function renderResponses(app, params) {
+export async function renderResponses(app, params) {
   if (!requireAdmin()) return;
 
   const quizId = params[0];
-  const quiz = getQuiz(quizId);
+  const quiz = await getQuiz(quizId);
   if (!quiz) { window.location.hash = '#/admin'; return; }
 
-  const submissions = getSubmissions(quizId);
+  const submissions = await getSubmissions(quizId);
   const avgScore = submissions.length > 0 ? Math.round(submissions.reduce((s, sub) => s + sub.percent, 0) / submissions.length) : 0;
   const passCount = submissions.filter(s => s.passed).length;
 
