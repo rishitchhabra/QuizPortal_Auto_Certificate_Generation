@@ -1,4 +1,4 @@
-import { getAdminConfig, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser, setIdToken } from './store.js';
+import { getAdminConfig, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser } from './store.js';
 
 // SHA-256 hash
 export async function hashPassword(password) {
@@ -73,7 +73,6 @@ export function initGoogleAuth(clientId, callback) {
       if (payload) {
         const user = { email: payload.email, name: payload.name, picture: payload.picture, sub: payload.sub };
         setGoogleUser(user);
-        setIdToken(response.credential);
         if (callback) callback(user);
       }
     }});

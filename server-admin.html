@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gyan Quiz Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body{font-family:Inter,Arial,Helvetica,sans-serif;margin:20px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border:1px solid #eee}
+    .row-actions button{margin-right:6px}
+  </style>
+</head>
+<body>
+  <h1>Gyan Quiz Admin UI</h1>
+  <section>
+    <h2>Quizzes</h2>
+    <div id="quizzes"></div>
+  </section>
+  <section>
+    <h2>Submissions</h2>
+    <div id="subs"></div>
+  </section>
+  <section>
+    <h2>Certificate Templates</h2>
+    <div id="temps"></div>
+  </section>
+
+  <section>
+    <h2>Database Tables</h2>
+    <div>
+      <label>Create table SQL:</label><br>
+      <textarea id="create-sql" rows="4" style="width:100%" placeholder="e.g. CREATE TABLE mydata (name TEXT, age INTEGER);"></textarea>
+      <div style="margin-top:8px"><button id="create-table">Create Table</button></div>
+    </div>
+    <div id="tables" style="margin-top:12px"></div>
+    <div id="table-rows" style="margin-top:12px"></div>
+  </section>
+
+  <script>
+    async function api(path, opts){
+      const res = await fetch('/api' + path, opts);
+      if (!res.ok) throw new Error(res.statusText);
+      return res.json();
+    }
+
+    async function loadQuizzes(){
+      const q = await api('/quizzes');
+      const el = document.getElementById('quizzes');
+      if(!q.length){ el.innerHTML='<div>No quizzes</div>'; return; }
+      el.innerHTML='';
+      const t=document.createElement('table');
+      t.innerHTML='<thead><tr><th>ID</th><th>Title</th><th>Published</th><th>Actions</th></tr></thead>';
+      const b=document.createElement('tbody');
+      q.forEach(x=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${x.id}</td><td>${x.title||''}</td><td>${x.isPublished? 'Yes':'No'}</td><td class="row-actions"></td>`;
+        const actions=tr.querySelector('.row-actions');
+        const del=document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete?')){ await api('/quizzes/'+x.id,{method:'DELETE'}); loadQuizzes(); }};
+        const edit=document.createElement('button'); edit.textContent='Edit JSON'; edit.onclick=()=>{ const j=prompt('Edit quiz JSON', JSON.stringify(x)); try{ const parsed=JSON.parse(j); api('/quizzes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsed)}).then(loadQuizzes); }catch(e){alert('Invalid JSON')} };
+        actions.appendChild(edit); actions.appendChild(del);
+        b.appendChild(tr);
+      });
+      t.appendChild(b); el.appendChild(t);
+    }
+
+    async function loadSubs(){
+      const s = await api('/submissions');
+      const el = document.getElementById('subs');
+      if(!s.length){ el.innerHTML='<div>No submissions</div>'; return; }
+      el.innerHTML='';
+      const t=document.createElement('table');
+      t.innerHTML='<thead><tr><th>ID</th><th>Quiz</th><th>Participant</th><th>Score</th><th>Submitted At</th></tr></thead>';
+      const b=document.createElement('tbody');
+      s.forEach(x=>{
+        const tr=document.createElement('tr');
+        const p = x.participant || {};
+        tr.innerHTML=`<td>${x.id}</td><td>${x.quizId}</td><td>${p.name||p.email||'-'}</td><td>${x.score}/${x.totalPoints}</td><td>${x.submittedAt}</td>`;
+        b.appendChild(tr);
+      });
+      t.appendChild(b); el.appendChild(t);
+    }
+
+    async function loadTemps(){
+      const tpls = await api('/cert-templates');
+      const el = document.getElementById('temps');
+      if(!tpls.length){ el.innerHTML='<div>No templates</div>'; return; }
+      el.innerHTML='';
+      const t=document.createElement('table');
+      t.innerHTML='<thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead>';
+      const b=document.createElement('tbody');
+      tpls.forEach(x=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${x.id}</td><td>${x.name||''}</td><td class="row-actions"></td>`;
+        const actions=tr.querySelector('.row-actions');
+        const del=document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete?')){ await api('/cert-templates/'+x.id,{method:'DELETE'}); loadTemps(); }};
+        actions.appendChild(del);
+        b.appendChild(tr);
+      });
+      t.appendChild(b); el.appendChild(t);
+    }
+
+    (async()=>{ try{ await loadQuizzes(); await loadSubs(); await loadTemps(); }catch(e){ console.error(e); alert('Error: '+e.message); } })();
+    // Tables management
+    async function loadTables(){
+      try{
+        const t = await api('/tables');
+        const el = document.getElementById('tables');
+        if(!t.length){ el.innerHTML='<div>No tables</div>'; return; }
+        el.innerHTML='';
+        const ul = document.createElement('ul');
+        t.forEach(name=>{
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${name}</strong> `;
+          const view = document.createElement('button'); view.textContent='View rows'; view.onclick=()=>viewRows(name);
+          const drop = document.createElement('button'); drop.textContent='Drop'; drop.style.marginLeft='6px'; drop.onclick=async()=>{ if(confirm('Drop table '+name+'?')){ await api('/tables/'+name,{method:'DELETE'}); loadTables(); document.getElementById('table-rows').innerHTML=''; }};
+          li.appendChild(view); li.appendChild(drop); ul.appendChild(li);
+        });
+        el.appendChild(ul);
+      }catch(e){ console.error(e); alert('Tables error: '+e.message); }
+    }
+
+    document.getElementById('create-table').onclick = async ()=>{
+      const sql = document.getElementById('create-sql').value.trim();
+      if(!sql){ alert('Enter CREATE TABLE SQL'); return; }
+      try{ await api('/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sql})}); document.getElementById('create-sql').value=''; loadTables(); }catch(e){ alert('Create error: '+e.message); }
+    };
+
+    async function viewRows(name){
+      try{
+        const rows = await api('/tables/'+encodeURIComponent(name)+'/rows');
+        const el = document.getElementById('table-rows');
+        el.innerHTML = `<h3>Rows: ${name}</h3>`;
+        if(!rows.length){ el.innerHTML += '<div>No rows</div>'; return; }
+        const t=document.createElement('table');
+        // headers
+        const hdrs = Object.keys(rows[0]);
+        t.innerHTML = '<thead><tr>'+hdrs.map(h=>`<th>${h}</th>`).join('')+'<th>Actions</th></tr></thead>';
+        const b=document.createElement('tbody');
+        rows.forEach(r=>{
+          const tr=document.createElement('tr');
+          tr.innerHTML = hdrs.map(h=>`<td>${escapeHtml(String(r[h]===undefined?'':r[h]))}</td>`).join('') + `<td></td>`;
+          const actions = tr.querySelector('td:last-child');
+          const del = document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete row?')){ await api('/tables/'+encodeURIComponent(name)+'/rows/'+r.rowid,{method:'DELETE'}); viewRows(name); } };
+          actions.appendChild(del);
+          b.appendChild(tr);
+        });
+        t.appendChild(b); el.appendChild(t);
+        // add row button
+        const add = document.createElement('button'); add.textContent='Add row (JSON)'; add.style.marginTop='8px'; add.onclick=async()=>{ const j = prompt('Enter row as JSON object, e.g. {"name":"Alice","age":10}'); try{ const obj = JSON.parse(j); await api('/tables/'+encodeURIComponent(name)+'/rows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}); viewRows(name); }catch(err){ alert('Invalid JSON or insert failed: '+err.message); } };
+        el.appendChild(add);
+      }catch(e){ console.error(e); alert('Rows error: '+e.message); }
+    }
+
+    // escapeHtml used earlier? define simple one
+    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // load tables on start
+    (async()=>{ try{ await loadTables(); }catch(e){ /* ignore */ } })();
+  </script>
+</body>
+</html>

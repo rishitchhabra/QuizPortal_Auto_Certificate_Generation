@@ -1,8 +1,6 @@
 const STORE_KEY = 'sciquiz_data';
 const ADMIN_KEY = 'sciquiz_admin';
 const AUTH_KEY = 'sciquiz_auth';
-const GUSER_KEY = 'sciquiz_guser';
-const GTOKEN_KEY = 'sciquiz_gtoken';
 
 // Server base (if server is running on same host but different port, set
 // window.SERVER_BASE = 'http://your-vps:3001' in a small script or env.
@@ -23,9 +21,7 @@ export function saveQuiz(quiz) {
   if (SERVER_BASE) {
     try {
       const url = quiz.id ? `${SERVER_BASE}/api/quizzes/${quiz.id}` : `${SERVER_BASE}/api/quizzes`;
-      const headers = { 'Content-Type': 'application/json' };
-      try { const t = getIdToken(); if (t) headers['Authorization'] = 'Bearer ' + t; } catch (e) {}
-      const opts = { method: quiz.id ? 'PUT' : 'POST', headers, body: JSON.stringify(quiz) };
+      const opts = { method: quiz.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(quiz) };
       fetch(url, opts).then(r => r.json()).catch(() => {
         const s = loadStore(); const i = s.quizzes.findIndex(q => q.id === quiz.id);
         if (i >= 0) s.quizzes[i] = quiz; else s.quizzes.push(quiz); saveStore(s);
@@ -58,13 +54,9 @@ export async function getAllQuizzes() {
 }
 export function deleteQuiz(id) {
   if (SERVER_BASE) {
-    try {
-      const headers = {};
-      try { const t = getIdToken(); if (t) headers['Authorization'] = 'Bearer ' + t; } catch (e) {}
-      fetch(`${SERVER_BASE}/api/quizzes/${id}`, { method: 'DELETE', headers }).catch(() => {
+    fetch(`${SERVER_BASE}/api/quizzes/${id}`, { method: 'DELETE' }).catch(() => {
       const s = loadStore(); s.quizzes = s.quizzes.filter(q => q.id !== id); saveStore(s);
-      });
-    } catch (e) { /* ignore */ }
+    });
     return;
   }
   const s = loadStore(); s.quizzes = s.quizzes.filter(q => q.id !== id); saveStore(s);
@@ -98,9 +90,7 @@ export function saveCertTemplate(t) {
   if (SERVER_BASE) {
     try {
       const url = t.id ? `${SERVER_BASE}/api/cert-templates/${t.id}` : `${SERVER_BASE}/api/cert-templates`;
-      const headers = { 'Content-Type': 'application/json' };
-      try { const tt = getIdToken(); if (tt) headers['Authorization'] = 'Bearer ' + tt; } catch (e) {}
-      const opts = { method: t.id ? 'PUT' : 'POST', headers, body: JSON.stringify(t) };
+      const opts = { method: t.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(t) };
       fetch(url, opts).then(r => r.json()).catch(() => {
         const s = loadStore(); const i = s.certificateTemplates.findIndex(x => x.id === t.id);
         if (i >= 0) s.certificateTemplates[i] = t; else s.certificateTemplates.push(t); saveStore(s);
@@ -125,13 +115,9 @@ export async function getAllCertTemplates() {
 }
 export function deleteCertTemplate(id) {
   if (SERVER_BASE) {
-    try {
-      const headers = {};
-      try { const tt = getIdToken(); if (tt) headers['Authorization'] = 'Bearer ' + tt; } catch (e) {}
-      fetch(`${SERVER_BASE}/api/cert-templates/${id}`, { method: 'DELETE', headers }).catch(() => {
+    fetch(`${SERVER_BASE}/api/cert-templates/${id}`, { method: 'DELETE' }).catch(() => {
       const s = loadStore(); s.certificateTemplates = s.certificateTemplates.filter(t => t.id !== id); saveStore(s);
-      });
-    } catch (e) { /* ignore */ }
+    });
     return;
   }
   const s = loadStore(); s.certificateTemplates = s.certificateTemplates.filter(t => t.id !== id); saveStore(s);
@@ -147,12 +133,6 @@ export function getAdminConfig() {
 }
 export function saveAdminConfig(cfg) { localStorage.setItem(ADMIN_KEY, JSON.stringify(cfg)); }
 
-// Google user token helpers
-export function getIdToken() {
-  try { return sessionStorage.getItem(GTOKEN_KEY) || null; } catch { return null; }
-}
-export function setIdToken(t) { try { sessionStorage.setItem(GTOKEN_KEY, t); } catch {} }
-
 // Auth Session
 export function getAuthSession() {
   try { const r = sessionStorage.getItem(AUTH_KEY); return r ? JSON.parse(r) : null; }
@@ -162,9 +142,10 @@ export function setAuthSession(data) { sessionStorage.setItem(AUTH_KEY, JSON.str
 export function clearAuthSession() { sessionStorage.removeItem(AUTH_KEY); }
 
 // Google User Session (for quiz takers)
+const GUSER_KEY = 'sciquiz_guser';
 export function getGoogleUser() {
   try { const r = sessionStorage.getItem(GUSER_KEY); return r ? JSON.parse(r) : null; }
   catch { return null; }
 }
-export function setGoogleUser(u) { try { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); } catch {} }
-export function clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); sessionStorage.removeItem(GTOKEN_KEY); }
+export function setGoogleUser(u) { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); }
+export function clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); }

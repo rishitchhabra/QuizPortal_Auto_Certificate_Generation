@@ -12,8 +12,10 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Set your API server base URL here (replace with your VPS IP/hostname and port) -->
   <script>
-    // Example: window.SERVER_BASE = 'http://123.45.67.89:3001';
-    window.SERVER_BASE = window.SERVER_BASE || 'http://REPLACE_WITH_VPS_IP:3001';
+    // For local development default to empty so client uses localStorage fallback.
+    // When deploying to your VPS, set this to your API base URL, e.g.:
+    // window.SERVER_BASE = 'http://YOUR_VPS_IP:3001';
+    window.SERVER_BASE = window.SERVER_BASE || '';
   </script>
 </head>
 <body>
