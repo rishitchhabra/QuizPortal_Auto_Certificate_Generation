@@ -44,6 +44,15 @@ db.prepare(`CREATE TABLE IF NOT EXISTS cert_templates (
   data TEXT
 )`).run();
 
+// Admin config table
+db.prepare(`CREATE TABLE IF NOT EXISTS admin_config (
+  id TEXT PRIMARY KEY,
+  passwordHash TEXT,
+  adminEmails TEXT,
+  googleClientId TEXT,
+  isSetup INTEGER DEFAULT 0
+)`).run();
+
 // Migrate legacy JSON if present and tables empty
 import fs from 'fs';
 const legacyPath = path.join(process.cwd(), 'data', 'db.json');
@@ -82,6 +91,48 @@ app.get('/admin-ui', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+// Admin config endpoints
+app.get('/api/admin-config', (req, res) => {
+  try {
+    const row = db.prepare('SELECT id, adminEmails, googleClientId, isSetup FROM admin_config LIMIT 1').get();
+    if (!row) return res.json({ isSetup: false });
+    return res.json({ id: row.id, adminEmails: row.adminEmails ? JSON.parse(row.adminEmails) : [], googleClientId: row.googleClientId || '', isSetup: !!row.isSetup });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+});
+
+// Create or update admin config. If no config exists, allow creation without auth.
+// For updates, require the caller to supply `currentPasswordHash` that matches stored hash.
+app.post('/api/admin-config', (req, res) => {
+  const body = req.body || {};
+  try {
+    const existing = db.prepare('SELECT * FROM admin_config LIMIT 1').get();
+    if (!existing) {
+      // create
+      if (!body.id || !body.passwordHash) return res.status(400).json({ error: 'id and passwordHash required' });
+      db.prepare('INSERT INTO admin_config (id,passwordHash,adminEmails,googleClientId,isSetup) VALUES (@id,@passwordHash,@adminEmails,@googleClientId,1)').run({ id: body.id, passwordHash: body.passwordHash, adminEmails: JSON.stringify(body.adminEmails||[]), googleClientId: body.googleClientId||'' });
+      return res.json({ ok: true });
+    }
+    // update - require currentPasswordHash
+    if (!body.currentPasswordHash) return res.status(401).json({ error: 'currentPasswordHash required' });
+    if (body.currentPasswordHash !== existing.passwordHash) return res.status(401).json({ error: 'invalid current password' });
+    const newHash = body.passwordHash || existing.passwordHash;
+    db.prepare('UPDATE admin_config SET id=@id,passwordHash=@passwordHash,adminEmails=@adminEmails,googleClientId=@googleClientId,isSetup=1').run({ id: body.id || existing.id, passwordHash: newHash, adminEmails: JSON.stringify(body.adminEmails || JSON.parse(existing.adminEmails || '[]')), googleClientId: body.googleClientId || existing.googleClientId || '' });
+    return res.json({ ok: true });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+});
+
+// Login: verify provided passwordHash matches stored hash
+app.post('/api/admin-login', (req, res) => {
+  const { id, passwordHash } = req.body || {};
+  try {
+    const row = db.prepare('SELECT * FROM admin_config LIMIT 1').get();
+    if (!row || !row.passwordHash) return res.status(401).json({ error: 'not configured' });
+    if (row.id !== id) return res.status(401).json({ error: 'invalid id' });
+    if (row.passwordHash !== passwordHash) return res.status(401).json({ error: 'invalid password' });
+    return res.json({ ok: true });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+});
 
 // Quizzes
 app.get('/api/quizzes', (req, res) => {
@@ -166,11 +217,16 @@ app.get('/api/tables', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Create table with raw SQL (admin only)
-app.post('/api/tables', basicAuth({ users: { [ADMIN_USER]: ADMIN_PASS }, challenge: true }), (req, res) => {
-  const { sql } = req.body || {};
+// Create table with raw SQL (admin only) - accept app admin currentPasswordHash in body or header
+app.post('/api/tables', (req, res) => {
+  const { sql, currentPasswordHash } = req.body || {};
+  const headerHash = req.headers['x-admin-password-hash'];
   if (!sql) return res.status(400).json({ error: 'sql required' });
   try {
+    const admin = db.prepare('SELECT * FROM admin_config LIMIT 1').get();
+    if (!admin || !admin.passwordHash) return res.status(401).json({ error: 'admin not configured' });
+    const ok = (currentPasswordHash && currentPasswordHash === admin.passwordHash) || (headerHash && headerHash === admin.passwordHash);
+    if (!ok) return res.status(401).json({ error: 'invalid admin password' });
     db.prepare(sql).run();
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -185,32 +241,44 @@ app.get('/api/tables/:name/rows', (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Insert a row into table (admin only)
-app.post('/api/tables/:name/rows', basicAuth({ users: { [ADMIN_USER]: ADMIN_PASS }, challenge: true }), (req, res) => {
+// Insert a row into table (admin only) - verify app admin via currentPasswordHash (body or header)
+app.post('/api/tables/:name/rows', (req, res) => {
   const name = req.params.name;
   const data = req.body || {};
   const cols = Object.keys(data);
   if (!cols.length) return res.status(400).json({ error: 'no data' });
   try {
+    const admin = db.prepare('SELECT * FROM admin_config LIMIT 1').get();
+    if (!admin || !admin.passwordHash) return res.status(401).json({ error: 'admin not configured' });
+    const provided = req.body.currentPasswordHash || req.headers['x-admin-password-hash'];
+    if (!provided || provided !== admin.passwordHash) return res.status(401).json({ error: 'invalid admin password' });
     const stmt = db.prepare(`INSERT INTO "${name}" (${cols.map(c => `"${c}"`).join(',')}) VALUES (${cols.map(() => '?').join(',')})`);
     const info = stmt.run(...cols.map(c => data[c]));
     res.json({ ok: true, lastInsertRowid: info.lastInsertRowid });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Delete row by rowid (admin only)
-app.delete('/api/tables/:name/rows/:rowid', basicAuth({ users: { [ADMIN_USER]: ADMIN_PASS }, challenge: true }), (req, res) => {
+// Delete row by rowid (admin only) - verify app admin via currentPasswordHash
+app.delete('/api/tables/:name/rows/:rowid', (req, res) => {
   const name = req.params.name; const rowid = req.params.rowid;
   try {
+    const admin = db.prepare('SELECT * FROM admin_config LIMIT 1').get();
+    if (!admin || !admin.passwordHash) return res.status(401).json({ error: 'admin not configured' });
+    const provided = req.body?.currentPasswordHash || req.headers['x-admin-password-hash'];
+    if (!provided || provided !== admin.passwordHash) return res.status(401).json({ error: 'invalid admin password' });
     db.prepare(`DELETE FROM "${name}" WHERE rowid = ?`).run(rowid);
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Drop table (admin only)
-app.delete('/api/tables/:name', basicAuth({ users: { [ADMIN_USER]: ADMIN_PASS }, challenge: true }), (req, res) => {
+// Drop table (admin only) - verify app admin via currentPasswordHash
+app.delete('/api/tables/:name', (req, res) => {
   const name = req.params.name;
   try {
+    const admin = db.prepare('SELECT * FROM admin_config LIMIT 1').get();
+    if (!admin || !admin.passwordHash) return res.status(401).json({ error: 'admin not configured' });
+    const provided = req.body?.currentPasswordHash || req.headers['x-admin-password-hash'];
+    if (!provided || provided !== admin.passwordHash) return res.status(401).json({ error: 'invalid admin password' });
     db.prepare(`DROP TABLE IF EXISTS "${name}"`).run();
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }

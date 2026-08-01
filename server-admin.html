@@ -44,6 +44,21 @@
       return res.json();
     }
 
+    // compute password hash (SHA-256 hex) with fallback DJB2
+    async function computeHash(password) {
+      try {
+        if (window.crypto?.subtle?.digest) {
+          const data = new TextEncoder().encode(password);
+          const buf = await window.crypto.subtle.digest('SHA-256', data);
+          return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+      } catch (e) { console.warn('crypto error', e); }
+      // DJB2 fallback
+      let h = 5381;
+      for (let i = 0; i < password.length; i++) { h = ((h << 5) + h) + password.charCodeAt(i); h = h >>> 0; }
+      return h.toString(16).padStart(8, '0');
+    }
+
     async function loadQuizzes(){
       const q = await api('/quizzes');
       const el = document.getElementById('quizzes');
@@ -113,7 +128,7 @@
           const li = document.createElement('li');
           li.innerHTML = `<strong>${name}</strong> `;
           const view = document.createElement('button'); view.textContent='View rows'; view.onclick=()=>viewRows(name);
-          const drop = document.createElement('button'); drop.textContent='Drop'; drop.style.marginLeft='6px'; drop.onclick=async()=>{ if(confirm('Drop table '+name+'?')){ await api('/tables/'+name,{method:'DELETE'}); loadTables(); document.getElementById('table-rows').innerHTML=''; }};
+          const drop = document.createElement('button'); drop.textContent='Drop'; drop.style.marginLeft='6px'; drop.onclick=async()=>{ if(confirm('Drop table '+name+'?')){ const pwd = prompt('Enter current admin password to drop table'); if(!pwd) return; const curHash = await computeHash(pwd); await api('/tables/'+name,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPasswordHash:curHash})}); loadTables(); document.getElementById('table-rows').innerHTML=''; }};
           li.appendChild(view); li.appendChild(drop); ul.appendChild(li);
         });
         el.appendChild(ul);
@@ -123,7 +138,13 @@
     document.getElementById('create-table').onclick = async ()=>{
       const sql = document.getElementById('create-sql').value.trim();
       if(!sql){ alert('Enter CREATE TABLE SQL'); return; }
-      try{ await api('/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sql})}); document.getElementById('create-sql').value=''; loadTables(); }catch(e){ alert('Create error: '+e.message); }
+      try{
+        const pwd = prompt('Enter current admin password to create table');
+        if (!pwd) return alert('Password required');
+        const curHash = await computeHash(pwd);
+        await api('/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sql, currentPasswordHash: curHash})});
+        document.getElementById('create-sql').value=''; loadTables();
+      }catch(e){ alert('Create error: '+e.message); }
     };
 
     async function viewRows(name){
@@ -141,13 +162,13 @@
           const tr=document.createElement('tr');
           tr.innerHTML = hdrs.map(h=>`<td>${escapeHtml(String(r[h]===undefined?'':r[h]))}</td>`).join('') + `<td></td>`;
           const actions = tr.querySelector('td:last-child');
-          const del = document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete row?')){ await api('/tables/'+encodeURIComponent(name)+'/rows/'+r.rowid,{method:'DELETE'}); viewRows(name); } };
+          const del = document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete row?')){ const pwd = prompt('Enter current admin password to delete row'); if(!pwd) return; const curHash = await computeHash(pwd); await api('/tables/'+encodeURIComponent(name)+'/rows/'+r.rowid,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPasswordHash:curHash})}); viewRows(name); } };
           actions.appendChild(del);
           b.appendChild(tr);
         });
         t.appendChild(b); el.appendChild(t);
         // add row button
-        const add = document.createElement('button'); add.textContent='Add row (JSON)'; add.style.marginTop='8px'; add.onclick=async()=>{ const j = prompt('Enter row as JSON object, e.g. {"name":"Alice","age":10}'); try{ const obj = JSON.parse(j); await api('/tables/'+encodeURIComponent(name)+'/rows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}); viewRows(name); }catch(err){ alert('Invalid JSON or insert failed: '+err.message); } };
+        const add = document.createElement('button'); add.textContent='Add row (JSON)'; add.style.marginTop='8px'; add.onclick=async()=>{ const j = prompt('Enter row as JSON object, e.g. {"name":"Alice","age":10}'); try{ const obj = JSON.parse(j); const pwd = prompt('Enter current admin password to add row'); if(!pwd) return; const curHash = await computeHash(pwd); obj.currentPasswordHash = curHash; await api('/tables/'+encodeURIComponent(name)+'/rows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}); viewRows(name); }catch(err){ alert('Invalid JSON or insert failed: '+err.message); } };
         el.appendChild(add);
       }catch(e){ console.error(e); alert('Rows error: '+e.message); }
     }

@@ -1,4 +1,4 @@
-import { getAdminConfig, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser } from './store.js';
+import { getAdminConfig, getAdminConfigAsync, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser } from './store.js';
 
 // SHA-256 hash
 export async function hashPassword(password) {
@@ -29,20 +29,29 @@ export async function setupAdmin(id, password) {
   const hash = await hashPassword(password);
   const cfg = getAdminConfig();
   cfg.id = id; cfg.passwordHash = hash; cfg.isSetup = true;
-  saveAdminConfig(cfg);
+  if (window.SERVER_BASE) {
+    // push to server (create)
+    await saveAdminConfig({ id: cfg.id, passwordHash: cfg.passwordHash, adminEmails: cfg.adminEmails || [], googleClientId: cfg.googleClientId || '' });
+  } else {
+    await saveAdminConfig(cfg);
+  }
   setAuthSession({ type: 'admin', id });
   return true;
 }
 
 // Admin Login
 export async function adminLogin(id, password) {
+  const hash = await hashPassword(password);
+  if (window.SERVER_BASE) {
+    try {
+      const r = await fetch(`${window.SERVER_BASE}/api/admin-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, passwordHash: hash }) });
+      if (r.ok) { setAuthSession({ type: 'admin', id }); return true; }
+      return false;
+    } catch (e) { return false; }
+  }
   const cfg = getAdminConfig();
   if (!cfg.isSetup) return false;
-  const hash = await hashPassword(password);
-  if (cfg.id === id && cfg.passwordHash === hash) {
-    setAuthSession({ type: 'admin', id });
-    return true;
-  }
+  if (cfg.id === id && cfg.passwordHash === hash) { setAuthSession({ type: 'admin', id }); return true; }
   // Check if google user email is admin
   return false;
 }

@@ -131,7 +131,30 @@ export function getAdminConfig() {
   try { const r = localStorage.getItem(ADMIN_KEY); return r ? JSON.parse(r) : getDefaultAdmin(); }
   catch { return getDefaultAdmin(); }
 }
-export function saveAdminConfig(cfg) { localStorage.setItem(ADMIN_KEY, JSON.stringify(cfg)); }
+export async function getAdminConfigAsync() {
+  if (SERVER_BASE) {
+    try {
+      const r = await fetch(`${SERVER_BASE}/api/admin-config`);
+      if (r.ok) return await r.json();
+    } catch (e) { /* fallback */ }
+  }
+  return getAdminConfig();
+}
+
+export async function saveAdminConfig(cfg) {
+  // cfg may include currentPasswordHash for updates
+  if (SERVER_BASE) {
+    try {
+      const r = await fetch(`${SERVER_BASE}/api/admin-config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
+      if (r.ok) return await r.json();
+      throw new Error((await r.json()).error || r.statusText);
+    } catch (e) {
+      // fallback to local
+    }
+  }
+  localStorage.setItem(ADMIN_KEY, JSON.stringify(cfg));
+  return cfg;
+}
 
 // Auth Session
 export function getAuthSession() {

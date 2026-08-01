@@ -1,12 +1,12 @@
 import { 
-  getAdminConfig, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
+  getAdminConfig, getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
   getAllCertTemplates, deleteCertTemplate 
 } from '../store.js';
 import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard } from '../utils.js';
 import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
 
-export function renderAdminLogin(app) {
-  const cfg = getAdminConfig();
+export async function renderAdminLogin(app) {
+  const cfg = await getAdminConfigAsync();
   const needsSetup = !cfg.isSetup;
 
   app.innerHTML = `
@@ -83,7 +83,7 @@ export async function renderAdminPanel(app) {
     return;
   }
 
-  const cfg = getAdminConfig();
+  const cfg = await getAdminConfigAsync();
   const quizzes = await getAllQuizzes();
   const templates = await getAllCertTemplates();
 
@@ -276,10 +276,17 @@ export async function renderAdminPanel(app) {
   });
 
   // OAuth save
-  app.querySelector('#btn-save-oauth').addEventListener('click', () => {
-    const c = getAdminConfig();
+  app.querySelector('#btn-save-oauth').addEventListener('click', async () => {
+    const c = await getAdminConfigAsync();
     c.googleClientId = app.querySelector('#google-client-id').value.trim();
-    saveAdminConfig(c);
+    if (window.SERVER_BASE) {
+      const cur = prompt('Enter current admin password to save settings');
+      if (!cur) { showToast('Password required', 'error'); return; }
+      const curHash = await hashPassword(cur);
+      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
+    } else {
+      await saveAdminConfig(c);
+    }
     showToast('Google OAuth Client ID saved!');
   });
 
@@ -289,35 +296,54 @@ export async function renderAdminPanel(app) {
     const nw = app.querySelector('#new-pass').value;
     if (!cur || !nw) { showToast('Fill current and new password', 'error'); return; }
     if (nw.length < 4) { showToast('Min 4 characters', 'error'); return; }
-    const c = getAdminConfig();
+    const c = await getAdminConfigAsync();
     const curHash = await hashPassword(cur);
-    if (curHash !== c.passwordHash) { showToast('Current password is incorrect', 'error'); return; }
-    c.passwordHash = await hashPassword(nw);
-    saveAdminConfig(c);
+    if (!window.SERVER_BASE) {
+      if (curHash !== c.passwordHash) { showToast('Current password is incorrect', 'error'); return; }
+      c.passwordHash = await hashPassword(nw);
+      await saveAdminConfig(c);
+    } else {
+      const newHash = await hashPassword(nw);
+      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, passwordHash: newHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
+    }
     showToast('Admin password updated successfully!');
     app.querySelector('#current-pass').value = '';
     app.querySelector('#new-pass').value = '';
   });
 
   // Add Admin Email
-  app.querySelector('#btn-add-email').addEventListener('click', () => {
+  app.querySelector('#btn-add-email').addEventListener('click', async () => {
     const email = app.querySelector('#new-admin-email').value.trim().toLowerCase();
     if (!email || !email.includes('@')) { showToast('Enter a valid email address', 'error'); return; }
-    const c = getAdminConfig();
+    const c = await getAdminConfigAsync();
     if (!c.adminEmails) c.adminEmails = [];
     if (c.adminEmails.includes(email)) { showToast('Email already in admin list', 'error'); return; }
     c.adminEmails.push(email);
-    saveAdminConfig(c);
+    if (window.SERVER_BASE) {
+      const cur = prompt('Enter current admin password to update admin emails');
+      if (!cur) { showToast('Password required', 'error'); return; }
+      const curHash = await hashPassword(cur);
+      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
+    } else {
+      await saveAdminConfig(c);
+    }
     showToast('Admin email added!');
     renderAdminPanel(app);
   });
 
   // Remove Admin Email
   app.querySelectorAll('.remove-email').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const c = getAdminConfig();
+    btn.addEventListener('click', async () => {
+      const c = await getAdminConfigAsync();
       c.adminEmails.splice(parseInt(btn.dataset.idx), 1);
-      saveAdminConfig(c);
+      if (window.SERVER_BASE) {
+        const cur = prompt('Enter current admin password to update admin emails');
+        if (!cur) { showToast('Password required', 'error'); return; }
+        const curHash = await hashPassword(cur);
+        await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
+      } else {
+        await saveAdminConfig(c);
+      }
       showToast('Admin email removed');
       renderAdminPanel(app);
     });
