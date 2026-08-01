@@ -6,13 +6,13 @@ export async function hashPassword(password) {
   // fall back to a small deterministic JS hash so the app still works
   // on non-HTTPS hosts or IP addresses during development.
   try {
-    if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
+    if (typeof window !== 'undefined' && window.crypto?.subtle?.digest) {
       const data = new TextEncoder().encode(password);
       const buf = await window.crypto.subtle.digest('SHA-256', data);
       return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
   } catch (e) {
-    console.warn('Web Crypto unavailable, using fallback hash:', e);
+    console.warn('Web Crypto unavailable or error, using fallback hash:', e);
   }
 
   // Fallback: DJB2-like hash (deterministic, not cryptographically secure)
