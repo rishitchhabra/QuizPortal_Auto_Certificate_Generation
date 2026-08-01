@@ -167,4 +167,4 @@ export function getGoogleUser() {
   catch { return null; }
 }
 export function setGoogleUser(u) { try { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); } catch {} }
-export function ₹clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); sessionStorage.removeItem(GTOKEN_KEY); }
+export function clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); sessionStorage.removeItem(GTOKEN_KEY); }
