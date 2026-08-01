@@ -227,4 +227,11 @@ app.use('/api', (req, res, next) => {
 // Serve admin static assets (if any)
 app.use('/static', express.static(path.join(process.cwd(), 'public')));
 
+// Serve Vite build
+app.use(express.static(path.join(process.cwd(), "dist")));
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(process.cwd(), "dist", "index.html"));
+});
+
 app.listen(PORT, () => console.log(`SQLite server listening on port ${PORT}`));
