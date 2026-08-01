@@ -2,7 +2,7 @@ import {
   getAdminConfig, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
   getAllCertTemplates, deleteCertTemplate 
 } from '../store.js';
-import { renderNavbar, showToast, showModal, escapeHtml } from '../utils.js';
+import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard } from '../utils.js';
 import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
 
 export function renderAdminLogin(app) {
@@ -257,9 +257,10 @@ export function renderAdminPanel(app) {
   app.querySelectorAll('.share-quiz').forEach(b => {
     b.addEventListener('click', () => {
       const url = `${window.location.origin}${window.location.pathname}#/take/${b.dataset.id}`;
-      navigator.clipboard.writeText(url).then(() => {
-        showToast('Quiz link copied to clipboard! 📋');
-      }).catch(() => showToast(url, 'info'));
+      copyTextToClipboard(url).then(ok => {
+        if (ok) showToast('Quiz link copied to clipboard! 📋');
+        else showToast(url, 'info');
+      });
     });
   });
 

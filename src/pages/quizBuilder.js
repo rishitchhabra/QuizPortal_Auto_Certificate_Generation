@@ -1,5 +1,5 @@
 import { saveQuiz, getQuiz, generateId, getAllCertTemplates } from '../store.js';
-import { renderNavbar, showToast, escapeHtml } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, copyTextToClipboard } from '../utils.js';
 import { requireAdmin } from '../auth.js';
 
 let currentQuiz = null;
@@ -312,8 +312,11 @@ function bindEvents(app) {
   });
 
   app.querySelector('#btn-copy-link')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(app.querySelector('#share-link').value);
-    showToast('Quiz link copied! 📋');
+    const url = app.querySelector('#share-link').value;
+    copyTextToClipboard(url).then(ok => {
+      if (ok) showToast('Quiz link copied! 📋');
+      else showToast(url, 'info');
+    });
   });
 
   app.querySelector('#btn-add-q')?.addEventListener('click', () => {

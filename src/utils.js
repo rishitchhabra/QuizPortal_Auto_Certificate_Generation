@@ -88,3 +88,35 @@ export function escapeHtml(str) {
   d.textContent = str || '';
   return d.innerHTML;
 }
+
+export async function copyTextToClipboard(text) {
+  if (!text) return false;
+  // Prefer modern clipboard API when available (requires secure context)
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      console.warn('navigator.clipboard.writeText failed:', e);
+      // fall through to legacy approach
+    }
+  }
+
+  // Legacy fallback using a temporary textarea and execCommand
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    // Prevent scrolling to bottom
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return !!ok;
+  } catch (e) {
+    console.warn('copy fallback failed:', e);
+    return false;
+  }
+}
