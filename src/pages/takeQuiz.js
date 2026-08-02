@@ -159,24 +159,12 @@ async function renderParticipantForm(app) {
   if (quiz.limitPerUser && participant.email) {
     const existing = await getSubmissionsByEmail(quiz.id, participant.email);
     if (existing.length > 0) {
-      app.innerHTML = `${renderNavbar()}
-        <div class="page fade-in">
-          <div class="container-sm" style="padding-top: 60px">
-            <div class="clay-card" style="padding: 3rem 2.5rem; text-align: center">
-              <div style="font-size: 4rem; margin-bottom: 0.75rem">🔒</div>
-              <h2 style="font-size: 1.6rem; font-weight: 800; margin-bottom: 0.5rem">Submission Limit Reached</h2>
-              <p style="color: var(--text-sub); margin-bottom: 1.25rem">
-                Only 1 response per Google account is permitted. You have already completed this evaluation.
-              </p>
-              <div style="padding: 1.25rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input); margin-bottom: 1.5rem">
-                <div style="font-size: 0.85rem; color: var(--text-sub)">Your Previous Score</div>
-                <div style="font-size: 2.2rem; font-weight: 900; color: var(--clay-primary); margin: 0.2rem 0">${existing[0].percent}%</div>
-                <div style="font-size: 0.8rem; color: var(--text-muted)">Submitted on ${new Date(existing[0].submittedAt).toLocaleDateString()}</div>
-              </div>
-              <a href="#/" class="btn btn-secondary">← Back to Home</a>
-            </div>
-          </div>
-        </div>`;
+      // Show full results page with summary, certificate, and answers
+      // so the user can still download their certificate
+      const sub = existing[0];
+      participant.name = sub.participant?.name || participant.name;
+      participant.email = sub.participant?.email || participant.email;
+      renderResults(sub);
       return;
     }
   }
@@ -555,15 +543,19 @@ function renderCertificate(template, submission) {
   
   // New upload-based template: the uploaded image IS the certificate (placeholders baked in design)
   if (template.backgroundImage && (!template.elements || template.elements.length === 0)) {
-    el.innerHTML = `<img src="${template.backgroundImage}" style="max-width:900px; width:100%; display:block; border-radius: 4px; box-shadow: 0 8px 25px rgba(0,0,0,0.12)" alt="Certificate">`;
+    const img = document.createElement('img');
+    img.style.cssText = 'max-width:900px; width:100%; display:block; border-radius: 4px; box-shadow: 0 8px 25px rgba(0,0,0,0.12)';
+    img.alt = 'Certificate';
+    img.src = template.backgroundImage; // Set programmatically, NOT via innerHTML
+    el.innerHTML = '';
+    el.appendChild(img);
     return;
   }
 
   // Legacy canvas-based template with elements overlay
   el.style.cssText = `width:900px;min-height:636px;position:relative;background:${template.backgroundColor || '#fffdf7'};border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'};font-family:'Playfair Display',serif;`;
   
-  const bgHtml = template.backgroundImage ? `<img src="${template.backgroundImage}" style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none">` : '';
-
+  // Build elements HTML (no large base64 in these)
   const placeholders = {
     '{{name}}': submission.participant?.name || 'Participant',
     '{{score}}': (submission.score || 0).toString(),
@@ -584,7 +576,15 @@ function renderCertificate(template, submission) {
     return `<div style="position:absolute;left:${e.x}px;top:${e.y}px;font-size:${e.fontSize || 16}px;color:${e.color || '#333'};font-family:${e.fontFamily || "'Playfair Display',serif"};font-weight:${e.fontWeight || 'normal'};font-style:${e.fontStyle || 'normal'};text-align:${e.textAlign || 'center'};${e.width ? `width:${e.width}px;` : ''}white-space:pre-wrap;line-height:1.4">${escapeHtml(c)}</div>`;
   }).join('');
 
-  el.innerHTML = bgHtml + elementsHtml;
+  el.innerHTML = elementsHtml;
+
+  // Add background image programmatically if exists
+  if (template.backgroundImage) {
+    const bgImg = document.createElement('img');
+    bgImg.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
+    bgImg.src = template.backgroundImage;
+    el.insertBefore(bgImg, el.firstChild);
+  }
 }
 
 async function downloadCertPDF() {

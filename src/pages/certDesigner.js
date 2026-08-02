@@ -3,9 +3,14 @@ import { renderNavbar, showToast, escapeHtml } from '../utils.js';
 import { requireAdmin } from '../auth.js';
 
 let template = null;
+// Store the raw object URL for preview (doesn't go into template literal)
+let previewObjectUrl = null;
 
 export async function renderCertDesigner(app, params) {
   if (!requireAdmin()) return;
+
+  // Cleanup old object URL
+  if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
 
   const id = params[0];
   if (id && id !== 'new') {
@@ -24,7 +29,7 @@ export async function renderCertDesigner(app, params) {
 }
 
 function renderPage(app) {
-  const hasUpload = !!template.backgroundImage;
+  const hasUpload = !!template.backgroundImage || !!previewObjectUrl;
 
   app.innerHTML = `
     ${renderNavbar()}
@@ -37,7 +42,7 @@ function renderPage(app) {
             <a href="#/admin" class="btn btn-ghost btn-sm" style="margin-bottom: 0.4rem">← Back to Admin Portal</a>
             <h1 style="font-size: 1.6rem; font-weight: 900">🎓 Upload Certificate Template</h1>
             <p style="color: var(--text-sub); font-size: 0.85rem; margin-top: 0.2rem">
-              Upload a pre-designed certificate image (PNG, JPG, or PDF). The system will use placeholders embedded in the design to fill student details.
+              Upload a pre-designed certificate image (PNG, JPG). The system will display this image as the certificate.
             </p>
           </div>
           <button class="btn btn-primary" id="btn-save" ${!hasUpload ? 'disabled style="opacity:0.5"' : ''}>💾 Save Certificate Template</button>
@@ -58,8 +63,8 @@ function renderPage(app) {
             <div class="clay-card">
               <h3 style="font-size: 1rem; font-weight: 800; margin-bottom: 0.5rem">📄 Upload Certificate Design</h3>
               <p style="font-size: 0.78rem; color: var(--text-sub); margin-bottom: 1rem">
-                Upload your custom-designed certificate file. Accepted formats: <strong>PNG, JPG, JPEG, WebP, PDF</strong>.
-                Design it externally (Canva, Photoshop, etc.) with placeholders like <code>{{name}}</code> baked into the image.
+                Upload your custom-designed certificate image. Accepted formats: <strong>PNG, JPG, JPEG, WebP</strong>.
+                Design it externally (Canva, Photoshop, etc.) and export as image.
               </p>
 
               <div style="border: 2px dashed ${hasUpload ? 'var(--clay-success)' : 'rgba(160,195,230,0.5)'}; border-radius: var(--radius-md); padding: 1.5rem; text-align:center; background: ${hasUpload ? 'rgba(34,197,94,0.05)' : 'var(--bg-input)'}; cursor: pointer; transition: all 0.2s" id="upload-drop-zone">
@@ -72,7 +77,7 @@ function renderPage(app) {
                   <div style="font-weight: 800; margin-bottom: 0.4rem">Click to Upload Certificate</div>
                   <div style="font-size: 0.8rem; color: var(--text-sub)">or drag and drop your file here</div>
                 `}
-                <input type="file" id="cert-upload" accept="image/*,application/pdf" style="display:none">
+                <input type="file" id="cert-upload" accept="image/png,image/jpeg,image/webp,image/jpg" style="display:none">
               </div>
 
               ${hasUpload ? `
@@ -109,7 +114,7 @@ function renderPage(app) {
               </div>
 
               <div style="margin-top: 1rem; padding: 0.75rem; background: #fff3cd; border-radius: var(--radius-sm); font-size: 0.78rem; color: #856404">
-                <strong>💡 Tip:</strong> Design your certificate in Canva or any design tool. Type the placeholder text exactly as shown (e.g. <code>{{name}}</code>) where you want dynamic data. Export as PNG/JPG and upload here.
+                <strong>💡 Tip:</strong> Design your certificate in Canva or any design tool. Export as PNG/JPG and upload here.
               </div>
             </div>
           </div>
@@ -124,7 +129,7 @@ function renderPage(app) {
 
               ${hasUpload ? `
                 <div style="background: #e2e8f0; border-radius: var(--radius-md); padding: 1rem; text-align:center">
-                  <img src="${template.backgroundImage}" style="max-width: 100%; max-height: 600px; border-radius: var(--radius-sm); box-shadow: 0 8px 25px rgba(0,0,0,0.15)" alt="Certificate Preview">
+                  <img id="cert-preview-img" style="max-width: 100%; max-height: 600px; border-radius: var(--radius-sm); box-shadow: 0 8px 25px rgba(0,0,0,0.15)" alt="Certificate Preview">
                 </div>
               ` : `
                 <div style="background: #f1f5f9; border-radius: var(--radius-md); padding: 4rem 2rem; text-align:center; border: 2px dashed rgba(160,195,230,0.4)">
@@ -140,6 +145,15 @@ function renderPage(app) {
       </div>
     </div>
   `;
+
+  // Set preview image src PROGRAMMATICALLY (not in innerHTML) to avoid base64 breaking the DOM
+  if (hasUpload) {
+    const previewImg = document.getElementById('cert-preview-img');
+    if (previewImg) {
+      // Prefer the lightweight objectURL for preview; fallback to stored base64
+      previewImg.src = previewObjectUrl || template.backgroundImage;
+    }
+  }
 
   bindEvents(app);
 }
@@ -180,6 +194,7 @@ function bindEvents(app) {
   app.querySelector('#btn-remove-upload')?.addEventListener('click', () => {
     template.backgroundImage = '';
     template.elements = [];
+    if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
     showToast('Certificate design removed');
     renderPage(app);
   });
@@ -190,23 +205,50 @@ function bindEvents(app) {
     if (!name) { showToast('Please enter a template name', 'error'); return; }
     if (!template.backgroundImage) { showToast('Please upload a certificate design first', 'error'); return; }
     template.name = name;
-    await saveCertTemplate(template);
-    showToast('Certificate template saved successfully! 🎓');
-    window.location.hash = '#/admin';
+    
+    const btn = app.querySelector('#btn-save');
+    btn.disabled = true;
+    btn.textContent = '⏳ Saving...';
+    
+    try {
+      await saveCertTemplate(template);
+      showToast('Certificate template saved successfully! 🎓');
+      window.location.hash = '#/admin';
+    } catch (err) {
+      console.error('Save error:', err);
+      showToast('Failed to save template: ' + (err.message || 'Server error'), 'error');
+      btn.disabled = false;
+      btn.textContent = '💾 Save Certificate Template';
+    }
   });
 }
 
 function handleFile(file, app) {
-  const maxSize = 5 * 1024 * 1024; // 5MB
+  const maxSize = 10 * 1024 * 1024; // 10MB
   if (file.size > maxSize) {
-    showToast('File too large. Max 5MB allowed.', 'error');
+    showToast('File too large. Max 10MB allowed.', 'error');
     return;
   }
+
+  // Validate it's actually an image
+  if (!file.type.startsWith('image/')) {
+    showToast('Please upload an image file (PNG, JPG, WebP)', 'error');
+    return;
+  }
+
+  // Create an object URL for fast, lightweight preview
+  if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+  previewObjectUrl = URL.createObjectURL(file);
+
+  // Also read as base64 data URL for saving to server
   const reader = new FileReader();
   reader.onload = evt => {
     template.backgroundImage = evt.target.result;
     showToast('Certificate design uploaded! 📄');
     renderPage(app);
+  };
+  reader.onerror = () => {
+    showToast('Failed to read file', 'error');
   };
   reader.readAsDataURL(file);
 }

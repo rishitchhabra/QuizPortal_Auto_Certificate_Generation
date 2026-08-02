@@ -219,7 +219,7 @@ export async function renderAdminPanel(app) {
                   <div>
                     ${t.backgroundImage ? `
                       <div style="height: 140px; border-radius: var(--radius-sm); margin-bottom: 1rem; overflow:hidden; background: #f1f5f9">
-                        <img src="${t.backgroundImage}" style="width:100%; height:100%; object-fit:cover" alt="Certificate Preview">
+                        <img class="tmpl-preview-img" data-tmplid="${t.id}" style="width:100%; height:100%; object-fit:cover" alt="Certificate Preview">
                       </div>
                     ` : `
                       <div style="height: 110px; background: #fffdf7; border: 3px double #c8a96e; border-radius: var(--radius-sm); margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; color: #c8a96e; font-weight: 700; font-size: 0.95rem">
@@ -299,6 +299,12 @@ export async function renderAdminPanel(app) {
       </div>
     </div>
   `;
+
+  // Set template preview images programmatically (base64 too large for innerHTML)
+  app.querySelectorAll('.tmpl-preview-img').forEach(img => {
+    const tmpl = templates.find(t => t.id === img.dataset.tmplid);
+    if (tmpl?.backgroundImage) img.src = tmpl.backgroundImage;
+  });
 
   // Bind Logout
   app.querySelector('#btn-logout').addEventListener('click', () => {
