@@ -541,50 +541,65 @@ function renderCertificate(template, submission) {
   const el = document.getElementById('cert-render');
   if (!el) return;
   
-  // New upload-based template: the uploaded image IS the certificate (placeholders baked in design)
-  if (template.backgroundImage && (!template.elements || template.elements.length === 0)) {
-    const img = document.createElement('img');
-    img.style.cssText = 'max-width:900px; width:100%; display:block; border-radius: 4px; box-shadow: 0 8px 25px rgba(0,0,0,0.12)';
-    img.alt = 'Certificate';
-    img.src = template.backgroundImage; // Set programmatically, NOT via innerHTML
-    el.innerHTML = '';
-    el.appendChild(img);
-    return;
-  }
+  el.style.cssText = `width:900px;height:636px;position:relative;background:${template.backgroundColor || '#ffffff'};border:${template.borderWidth || 0}px ${template.borderStyle || 'solid'} ${template.borderColor || '#c8a96e'};font-family:'Playfair Display',serif;overflow:hidden;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,0.15);`;
+  el.innerHTML = '';
 
-  // Legacy canvas-based template with elements overlay
-  el.style.cssText = `width:900px;min-height:636px;position:relative;background:${template.backgroundColor || '#fffdf7'};border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'};font-family:'Playfair Display',serif;`;
-  
-  // Build elements HTML (no large base64 in these)
-  const placeholders = {
-    '{{name}}': submission.participant?.name || 'Participant',
-    '{{score}}': (submission.score || 0).toString(),
-    '{{total}}': (submission.totalPoints || 0).toString(),
-    '{{percent}}': (submission.percent || 0) + '%',
-    '{{date}}': new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-    '{{quiz_title}}': quiz.title,
-    '{{email}}': submission.participant?.email || '',
-    '{{org}}': submission.participant?.org || '',
-  };
-
-  const elementsHtml = (template.elements || []).map(e => {
-    if (e.type === 'image') {
-      return `<img src="${e.src}" style="position:absolute;left:${e.x}px;top:${e.y}px;width:${e.width || 100}px;height:${e.height || 100}px;object-fit:contain">`;
-    }
-    let c = e.content || '';
-    for (const [k, v] of Object.entries(placeholders)) c = c.replaceAll(k, v);
-    return `<div style="position:absolute;left:${e.x}px;top:${e.y}px;font-size:${e.fontSize || 16}px;color:${e.color || '#333'};font-family:${e.fontFamily || "'Playfair Display',serif"};font-weight:${e.fontWeight || 'normal'};font-style:${e.fontStyle || 'normal'};text-align:${e.textAlign || 'center'};${e.width ? `width:${e.width}px;` : ''}white-space:pre-wrap;line-height:1.4">${escapeHtml(c)}</div>`;
-  }).join('');
-
-  el.innerHTML = elementsHtml;
-
-  // Add background image programmatically if exists
+  // 1. Add background image if present
   if (template.backgroundImage) {
     const bgImg = document.createElement('img');
     bgImg.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
     bgImg.src = template.backgroundImage;
-    el.insertBefore(bgImg, el.firstChild);
+    el.appendChild(bgImg);
   }
+
+  // 2. Prepare Placeholder Values
+  const pName = submission.participant?.name || participant.name || 'Participant';
+  const pEmail = submission.participant?.email || participant.email || '';
+  const pOrg = submission.participant?.org || participant.org || '';
+  const scoreStr = (submission.score ?? 0).toString();
+  const totalStr = (submission.totalPoints ?? 0).toString();
+  const percentStr = (submission.percent ?? 0) + '%';
+  const dateStr = new Date(submission.submittedAt || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const quizTitle = quiz?.title || 'Evaluation';
+
+  const placeholders = {
+    '{{name}}': pName,
+    '{{quiz_title}}': quizTitle,
+    '{{score}}': scoreStr,
+    '{{total}}': totalStr,
+    '{{percent}}': percentStr,
+    '{{date}}': dateStr,
+    '{{email}}': pEmail,
+    '{{org}}': pOrg,
+  };
+
+  // Get elements list (fallback to default if empty)
+  let elements = template.elements;
+  if (!elements || elements.length === 0) {
+    elements = [
+      { id: 'def1', type: 'text', content: 'CERTIFICATE OF ACHIEVEMENT', x: 50, y: 110, fontSize: 26, color: '#0284c7', fontFamily: "'Playfair Display',serif", fontWeight: '700', textAlign: 'center', width: 800 },
+      { id: 'def2', type: 'text', content: '{{quiz_title}}', x: 50, y: 165, fontSize: 24, color: '#1e293b', fontFamily: "'Playfair Display',serif", fontWeight: '700', textAlign: 'center', width: 800 },
+      { id: 'def3', type: 'text', content: 'PROUDLY PRESENTED TO', x: 50, y: 220, fontSize: 13, color: '#64748b', fontFamily: "'Outfit',sans-serif", fontWeight: '600', textAlign: 'center', width: 800 },
+      { id: 'def4', type: 'text', content: '{{name}}', x: 50, y: 255, fontSize: 36, color: '#d97706', fontFamily: "'Great Vibes',cursive", fontWeight: '700', textAlign: 'center', width: 800 },
+      { id: 'def5', type: 'text', content: 'for successfully completing the evaluation with a score of {{score}}/{{total}} ({{percent}})', x: 50, y: 330, fontSize: 14, color: '#475569', fontFamily: "'Outfit',sans-serif", fontWeight: '400', textAlign: 'center', width: 800 },
+      { id: 'def6', type: 'text', content: 'Date: {{date}}', x: 100, y: 460, fontSize: 13, color: '#64748b', fontFamily: "'Outfit',sans-serif", fontWeight: '500', textAlign: 'center', width: 250 },
+      { id: 'def7', type: 'text', content: '_______________________\nAuthorized Signature', x: 550, y: 445, fontSize: 13, color: '#64748b', fontFamily: "'Outfit',sans-serif", fontWeight: '500', textAlign: 'center', width: 250 }
+    ];
+  }
+
+  // 3. Render Elements with Placeholder Replacements
+  const elementsHtml = elements.map(e => {
+    if (e.type === 'image') {
+      return `<img src="${e.src}" style="position:absolute;left:${e.x}px;top:${e.y}px;width:${e.width || 100}px;height:${e.height || 100}px;object-fit:contain">`;
+    }
+    let c = e.content || '';
+    for (const [k, v] of Object.entries(placeholders)) {
+      c = c.replaceAll(k, v);
+    }
+    return `<div style="position:absolute;left:${e.x}px;top:${e.y}px;font-size:${e.fontSize || 16}px;color:${e.color || '#333'};font-family:${e.fontFamily || "'Playfair Display',serif"};font-weight:${e.fontWeight || 'normal'};font-style:${e.fontStyle || 'normal'};text-align:${e.textAlign || 'center'};${e.width ? `width:${e.width}px;` : ''}white-space:pre-wrap;line-height:1.4">${escapeHtml(c)}</div>`;
+  }).join('');
+
+  el.insertAdjacentHTML('beforeend', elementsHtml);
 }
 
 async function downloadCertPDF() {
@@ -592,24 +607,17 @@ async function downloadCertPDF() {
     const { default: html2canvas } = await import('html2canvas-pro');
     const { jsPDF } = await import('jspdf');
     const certEl = document.getElementById('cert-render');
-    const img = certEl.querySelector('img');
+    if (!certEl) return;
     
-    // Determine dimensions from the rendered image or default
-    const w = img?.naturalWidth || 900;
-    const h = img?.naturalHeight || 636;
-    const aspectRatio = w / h;
-    const pdfW = 900;
-    const pdfH = Math.round(pdfW / aspectRatio);
-    
-    const canvas = await html2canvas(certEl, { scale: 2, useCORS: true, backgroundColor: null });
+    showToast('Generating PDF certificate... ⏳');
+    const canvas = await html2canvas(certEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
     const imgData = canvas.toDataURL('image/png');
-    const orientation = pdfW >= pdfH ? 'landscape' : 'portrait';
-    const pdf = new jsPDF({ orientation, unit: 'px', format: [pdfW, pdfH] });
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
-    pdf.save(`Certificate_${participant.name || 'participant'}.pdf`);
-    showToast('Certificate downloaded in PDF format! 🎓');
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [900, 636] });
+    pdf.addImage(imgData, 'PNG', 0, 0, 900, 636);
+    pdf.save(`Certificate_${participant.name || 'Participant'}.pdf`);
+    showToast('Certificate downloaded successfully! 🎓');
   } catch (e) {
     console.error(e);
-    showToast('Download error', 'error');
+    showToast('Download error: ' + (e.message || 'Could not generate PDF'), 'error');
   }
 }
