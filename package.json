@@ -21,6 +21,7 @@
     "html2canvas-pro": "^2.3.3",
     "jspdf": "^4.2.1",
     "multer": "^2.2.0",
+    "pdfjs-dist": "^6.2.108",
     "pg": "^8.13.1",
     "pizzip": "^3.2.0"
   }

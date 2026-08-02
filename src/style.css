@@ -121,6 +121,10 @@ body::after {
   -webkit-text-fill-color: transparent;
 }
 
+.top-announcement-strip {
+  display: none;
+}
+
 .brand-subtitle {
   font-size: 0.72rem;
   font-weight: 700;
@@ -706,6 +710,30 @@ body::after {
 }
 
 @media (max-width: 768px) {
+  .top-announcement-strip {
+    display: block;
+    background: linear-gradient(135deg, #0284c7 0%, #3b82f6 100%);
+    color: #ffffff;
+    text-align: center;
+    padding: 6px 12px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+  }
+  .navbar {
+    padding: 0.6rem 1rem;
+  }
+  .brand-subtitle {
+    display: none !important;
+  }
+  .brand-title {
+    font-size: 1.05rem;
+  }
+  .brand-logo-img {
+    height: 34px;
+  }
   .hero-clay h1 { font-size: 2rem; }
   .designer-layout { grid-template-columns: 1fr; height: auto; }
   .quiz-code-box { flex-direction: column; border-radius: var(--radius-lg); }

@@ -379,29 +379,58 @@ function validateAndSubmit() {
   showModal('Submit Quiz Arena?', '<p>Are you sure you want to finalize and submit your responses?</p>', () => submitQuiz(false));
 }
 
+let quizEndTime = null;
+
 function startTimer() {
-  const timerEl = document.getElementById('timer');
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(() => {
-    timeLeft--;
+  const key = `quiz_end_time_${quiz.id}`;
+  const stored = sessionStorage.getItem(key);
+  const totalSeconds = (quiz.timerMinutes || 30) * 60;
+  
+  if (stored && !isNaN(parseInt(stored))) {
+    quizEndTime = parseInt(stored);
+  } else {
+    quizEndTime = Date.now() + (totalSeconds * 1000);
+    sessionStorage.setItem(key, quizEndTime.toString());
+  }
+
+  const updateTimerDisplay = () => {
+    if (quizSubmitted) return;
+    const now = Date.now();
+    const remaining = Math.max(0, Math.ceil((quizEndTime - now) / 1000));
+    timeLeft = remaining;
+
+    const timerEl = document.getElementById('timer');
     if (timerEl) {
-      timerEl.textContent = '⏱️ ' + formatTime(timeLeft);
+      timerEl.textContent = '⏱️ ' + formatTime(remaining);
       timerEl.className = 'timer-display';
-      if (timeLeft <= 60) timerEl.classList.add('danger');
-      else if (timeLeft <= 300) timerEl.classList.add('warning');
+      if (remaining <= 60) timerEl.classList.add('danger');
+      else if (remaining <= 300) timerEl.classList.add('warning');
     }
-    if (timeLeft <= 0) {
-      clearInterval(timerInterval);
+
+    if (remaining <= 0) {
+      if (timerInterval) clearInterval(timerInterval);
+      sessionStorage.removeItem(key);
       showToast('⏰ Time is up! Submitting evaluation automatically...', 'info');
       submitQuiz(true);
     }
-  }, 1000);
+  };
+
+  updateTimerDisplay();
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(updateTimerDisplay, 1000);
+
+  // Resume / calculate time when app becomes active again or phone unlocks
+  window.removeEventListener('visibilitychange', updateTimerDisplay);
+  window.addEventListener('visibilitychange', updateTimerDisplay);
+  window.removeEventListener('focus', updateTimerDisplay);
+  window.addEventListener('focus', updateTimerDisplay);
 }
 
 async function submitQuiz(force = false) {
   if (quizSubmitted) return;
   quizSubmitted = true;
   if (timerInterval) clearInterval(timerInterval);
+  sessionStorage.removeItem(`quiz_end_time_${quiz.id}`);
 
   const btn = document.getElementById('btn-submit-continuous');
   if (btn) {
@@ -438,6 +467,7 @@ async function submitQuiz(force = false) {
 }
 
 function renderResults(submission) {
+  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   const app = document.getElementById('app');
   (async () => {
     const certTemplate = quiz.certificateTemplateId ? await getCertTemplate(quiz.certificateTemplateId) : null;

@@ -21,25 +21,27 @@ export function showToast(message, type = 'success') {
 
 export function renderNavbar() {
   const isAdmin = isAdminLoggedIn();
-  return `<nav class="navbar">
-    <a class="navbar-brand" href="/#/">
-      <div class="logo-clay-wrapper">
-        <img src="logo.png" alt="Gyan International School Logo" class="brand-logo-img">
+  return `
+    <div class="top-announcement-strip">Gyan International School</div>
+    <nav class="navbar">
+      <a class="navbar-brand" href="/#/">
+        <div class="logo-clay-wrapper">
+          <img src="logo.png" alt="Gyan International School Logo" class="brand-logo-img">
+        </div>
+        <div style="display:flex; flex-direction:column">
+          <span class="brand-title">Gyan's Quiz Arena</span>
+          <span class="brand-subtitle">Gyan International School</span>
+        </div>
+      </a>
+      <div class="navbar-actions">
+        <a href="/#/" class="btn btn-ghost btn-sm">Home</a>
+        ${isAdmin ? `
+          <a href="/#/admin" class="btn btn-primary btn-sm">⚙️ Admin Portal</a>
+        ` : `
+          <a href="/#/admin-login" class="btn btn-secondary btn-sm">🔒 Admin Login</a>
+        `}
       </div>
-      <div style="display:flex; flex-direction:column">
-        <span class="brand-title">Gyan's Quiz Arena</span>
-        <span class="brand-subtitle">Gyan International School</span>
-      </div>
-    </a>
-    <div class="navbar-actions">
-      <a href="/#/" class="btn btn-ghost btn-sm">Home</a>
-      ${isAdmin ? `
-        <a href="/#/admin" class="btn btn-primary btn-sm">⚙️ Admin Portal</a>
-      ` : `
-        <a href="/#/admin-login" class="btn btn-secondary btn-sm">🔒 Admin Login</a>
-      `}
-    </div>
-  </nav>`;
+    </nav>`;
 }
 
 export function showModal(title, content, onConfirm) {
