@@ -684,11 +684,37 @@ async function loadAndShowPptxCertPreview(certTemplate, submission) {
         container.style.padding = '0';
         container.style.background = 'transparent';
         container.style.boxShadow = 'none';
+        
         container.innerHTML = `
           <div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,0.15)">
-            <iframe src="${blobUrl}#view=FitH&toolbar=0&navpanes=0&scrollbar=0" style="width:100%; aspect-ratio: 900 / 636; border:none; display:block; background:transparent"></iframe>
+            <canvas id="pdf-cert-canvas" style="width:100%; height:auto; display:block; border-radius: var(--radius-md); background:#fff"></canvas>
           </div>
         `;
+
+        try {
+          const arrayBuffer = await cachedCertBlob.arrayBuffer();
+          const pdfjsLib = await import('pdfjs-dist');
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
+
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 2 });
+
+          const canvas = document.getElementById('pdf-cert-canvas');
+          if (canvas) {
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext('2d');
+            await page.render({ canvasContext: ctx, viewport }).promise;
+          }
+        } catch (pdfErr) {
+          console.warn('PDF.js render fallback:', pdfErr);
+          container.innerHTML = `
+            <div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,0.15)">
+              <object data="${blobUrl}" type="application/pdf" style="width:100%; aspect-ratio: 900 / 636; border:none; display:block"></object>
+            </div>
+          `;
+        }
       } else {
         container.innerHTML = `
           <div style="padding:2rem; text-align:center">
