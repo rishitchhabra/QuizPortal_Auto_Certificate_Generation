@@ -144,13 +144,23 @@ async function migrateLegacyJson() {
   }
 }
 
+function parseJson(val, fallback = {}) {
+  if (!val) return fallback;
+  if (typeof val === 'object') return val;
+  if (typeof val === 'string') {
+    try { return JSON.parse(val); } catch { return fallback; }
+  }
+  return fallback;
+}
+
 function mapQuiz(row) {
+  const data = parseJson(row.data, {});
   return {
-    ...(row.data || {}),
+    ...data,
     id: row.id,
-    title: row.title,
-    description: row.description,
-    isPublished: row.is_published
+    title: row.title || data.title || '',
+    description: row.description || data.description || '',
+    isPublished: row.is_published !== false
   };
 }
 
@@ -158,20 +168,21 @@ function mapSubmission(row) {
   return {
     id: row.id,
     quizId: row.quiz_id,
-    participant: row.participant || {},
-    answers: row.answers || {},
+    participant: parseJson(row.participant, {}),
+    answers: parseJson(row.answers, {}),
     score: row.score,
     totalPoints: row.total_points,
     percent: row.percent,
     passed: row.passed,
     timeTaken: row.time_taken,
-    questionResults: row.question_results || [],
+    questionResults: parseJson(row.question_results, []),
     submittedAt: row.submitted_at?.toISOString?.() || row.submitted_at
   };
 }
 
 function mapCertTemplate(row) {
-  return { ...(row.data || {}), id: row.id, name: row.name };
+  const data = parseJson(row.data, {});
+  return { ...data, id: row.id, name: row.name || data.name || '' };
 }
 
 async function upsertQuiz(quiz) {

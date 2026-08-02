@@ -533,11 +533,12 @@ body::after {
   cursor: move;
   user-select: none;
   padding: 4px 8px;
-  border: 2px dashed transparent;
+  box-sizing: border-box;
+  outline: 2px solid transparent;
   border-radius: 4px;
 }
-.cert-el:hover { border-color: rgba(0, 136, 255, 0.5); }
-.cert-el.selected { border-color: #0284c7; background: rgba(2, 132, 199, 0.08); box-shadow: 0 0 0 1px #0284c7; }
+.cert-el:hover { outline-color: rgba(0, 136, 255, 0.5); }
+.cert-el.selected { outline: 2px dashed #0284c7; background: rgba(2, 132, 199, 0.08); }
 
 .resize-handle {
   position: absolute;

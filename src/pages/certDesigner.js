@@ -444,9 +444,14 @@ function updateCanvasEl(data) {
     if (img) img.src = data.src;
   } else {
     domEl.style.fontSize = (data.fontSize || 16) + 'px'; domEl.style.color = data.color || '#333';
-    domEl.style.fontFamily = data.fontFamily; domEl.style.fontWeight = data.fontWeight;
-    domEl.style.fontStyle = data.fontStyle; domEl.style.textAlign = data.textAlign;
+    domEl.style.fontFamily = data.fontFamily || "'Playfair Display',serif";
+    domEl.style.fontWeight = data.fontWeight || 'normal';
+    domEl.style.fontStyle = data.fontStyle || 'normal';
+    domEl.style.textAlign = data.textAlign || 'center';
     if (data.width) domEl.style.width = data.width + 'px'; else domEl.style.width = '';
-    domEl.textContent = data.content;
+    
+    const isSel = data.id === selectedId;
+    const handleHtml = isSel ? `<div class="resize-handle" data-elid="${data.id}" title="Drag to Resize"></div>` : '';
+    domEl.innerHTML = escapeHtml(data.content || '') + handleHtml;
   }
 }
