@@ -12,7 +12,19 @@ export function navigate(hash) {
 }
 
 export function startRouter() {
+  function normalizePathRoute() {
+    const pathname = window.location.pathname.replace(/\/+$/, '');
+    const hash = window.location.hash || '';
+    const pathRoutes = new Set(['/admin', '/admin-login']);
+
+    if (pathRoutes.has(pathname)) {
+      const route = hash && hash !== '#/' ? hash : `#${pathname}`;
+      window.history.replaceState(null, '', `/${route}`);
+    }
+  }
+
   function handleRoute() {
+    normalizePathRoute();
     const rawHash = window.location.hash.slice(1) || '/';
     const [path, ...params] = rawHash.split('/').filter(Boolean);
     const routeKey = '/' + (path || '');

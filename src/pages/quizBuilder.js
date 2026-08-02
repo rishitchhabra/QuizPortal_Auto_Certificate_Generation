@@ -148,7 +148,7 @@ async function renderPage(app) {
               Share this link with participants to take the quiz.
             </p>
             <div style="display:flex; gap: 0.5rem">
-              <input type="text" class="form-input" value="${window.location.origin}${window.location.pathname}#/take/${currentQuiz.id}" readonly id="share-link">
+              <input type="text" class="form-input" value="${window.location.origin}/#/take/${currentQuiz.id}" readonly id="share-link">
               <button class="btn btn-primary" id="btn-copy-link">📋 Copy Link</button>
             </div>
           </div>

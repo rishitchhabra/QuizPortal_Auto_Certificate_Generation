@@ -22,7 +22,7 @@ export function showToast(message, type = 'success') {
 export function renderNavbar() {
   const isAdmin = isAdminLoggedIn();
   return `<nav class="navbar">
-    <a class="navbar-brand" href="#/">
+    <a class="navbar-brand" href="/#/">
       <div class="logo-clay-wrapper">
         <img src="logo.png" alt="Gyan International School Logo" class="brand-logo-img">
       </div>
@@ -32,11 +32,11 @@ export function renderNavbar() {
       </div>
     </a>
     <div class="navbar-actions">
-      <a href="#/" class="btn btn-ghost btn-sm">Home</a>
+      <a href="/#/" class="btn btn-ghost btn-sm">Home</a>
       ${isAdmin ? `
-        <a href="#/admin" class="btn btn-primary btn-sm">⚙️ Admin Portal</a>
+        <a href="/#/admin" class="btn btn-primary btn-sm">⚙️ Admin Portal</a>
       ` : `
-        <a href="#/admin-login" class="btn btn-secondary btn-sm">🔒 Admin Login</a>
+        <a href="/#/admin-login" class="btn btn-secondary btn-sm">🔒 Admin Login</a>
       `}
     </div>
   </nav>`;

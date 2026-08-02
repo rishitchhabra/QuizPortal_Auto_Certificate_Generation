@@ -256,7 +256,7 @@ export async function renderAdminPanel(app) {
   // Share Quiz Link
   app.querySelectorAll('.share-quiz').forEach(b => {
     b.addEventListener('click', () => {
-      const url = `${window.location.origin}${window.location.pathname}#/take/${b.dataset.id}`;
+      const url = `${window.location.origin}/#/take/${b.dataset.id}`;
       copyTextToClipboard(url).then(ok => {
         if (ok) showToast('Quiz link copied to clipboard! 📋');
         else showToast(url, 'info');
@@ -373,7 +373,7 @@ function renderAdminQuizCard(quiz, subsCount) {
         </button>
         <a href="#/edit/${quiz.id}" class="btn btn-secondary btn-sm">✏️ Edit</a>
         <button class="btn btn-secondary btn-sm share-quiz" data-id="${quiz.id}">🔗 Copy Link</button>
-        <a href="#/responses/${quiz.id}" class="btn btn-secondary btn-sm">📊 Responses (${subs.length})</a>
+        <a href="#/responses/${quiz.id}" class="btn btn-secondary btn-sm">📊 Responses (${subsCount || 0})</a>
         <button class="btn btn-danger btn-sm del-quiz" data-id="${quiz.id}" style="margin-left:auto">🗑️</button>
       </div>
     </div>
