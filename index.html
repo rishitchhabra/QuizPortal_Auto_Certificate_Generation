@@ -10,11 +10,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Great+Vibes&display=swap" rel="stylesheet">
   <link rel="icon" type="image/png" href="/logo.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <!-- Set your API server base URL here (replace with your VPS IP/hostname and port) -->
+  <!-- API server base URL: empty means same-origin (Express serves both frontend + API) -->
   <script>
-    // For local development default to empty so client uses localStorage fallback.
-    // When deploying to your VPS, set this to your API base URL, e.g.:
-    // window.SERVER_BASE = 'http://YOUR_VPS_IP:3001';
+    // In production, leave empty — Express serves the built frontend AND the API on the same port.
+    // During Vite dev, the vite.config.js proxy handles /api/* routing to localhost:3001.
     window.SERVER_BASE = window.SERVER_BASE || '';
   </script>
 </head>

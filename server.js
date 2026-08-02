@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -285,12 +286,14 @@ app.post('/api/admin-config', asyncHandler(async (req, res) => {
 
   await pool.query(
     `UPDATE admin_config
-     SET id = $1, password_hash = $2, admin_emails = $3, google_client_id = $4, is_setup = true, updated_at = now()`,
+     SET id = $1, password_hash = $2, admin_emails = $3, google_client_id = $4, is_setup = true, updated_at = now()
+     WHERE id = $5`,
     [
       body.id || existing.id,
       body.passwordHash || existing.password_hash,
       body.adminEmails || existing.admin_emails || [],
-      body.googleClientId || existing.google_client_id || ''
+      body.googleClientId || existing.google_client_id || '',
+      existing.id
     ]
   );
   res.json({ ok: true });
