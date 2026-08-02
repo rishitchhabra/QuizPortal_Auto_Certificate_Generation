@@ -6,7 +6,27 @@ import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard } f
 import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
 
 export async function renderAdminLogin(app) {
-  const cfg = await getAdminConfigAsync();
+  let cfg;
+  try {
+    cfg = await getAdminConfigAsync();
+  } catch (err) {
+    console.error('Admin login load error:', err);
+    app.innerHTML = `
+      ${renderNavbar()}
+      <div class="page fade-in">
+        <div class="container-sm" style="padding-top: 60px">
+          <div class="clay-card" style="text-align:center; padding: 3rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem">⚠️</div>
+            <h2 style="margin-bottom: 0.5rem">Server Unavailable</h2>
+            <p style="color: var(--text-sub); margin-bottom: 0.5rem">Cannot reach the server. Please check if the backend is running.</p>
+            <p style="color: var(--text-sub); font-size: 0.8rem; margin-bottom: 1.5rem">Error: ${escapeHtml(err.message || 'Unknown error')}</p>
+            <button class="btn btn-primary" onclick="location.reload()">🔄 Retry</button>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
   const needsSetup = !cfg.isSetup;
 
   app.innerHTML = `
@@ -83,9 +103,46 @@ export async function renderAdminPanel(app) {
     return;
   }
 
-  const cfg = await getAdminConfigAsync();
-  const quizzes = await getAllQuizzes();
-  const templates = await getAllCertTemplates();
+  // Show loading state immediately so the page isn't blank
+  app.innerHTML = `
+    ${renderNavbar()}
+    <div class="page fade-in">
+      <div class="container" style="text-align:center; padding-top: 100px;">
+        <div class="clay-card" style="max-width: 400px; margin: 0 auto; padding: 3rem;">
+          <div style="font-size: 2.5rem; margin-bottom: 1rem; animation: pulse 1.5s ease-in-out infinite">⚙️</div>
+          <h3>Loading Admin Panel...</h3>
+          <p style="color: var(--text-sub); font-size: 0.85rem; margin-top: 0.5rem">Fetching data from server</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let cfg, quizzes, templates;
+  try {
+    [cfg, quizzes, templates] = await Promise.all([
+      getAdminConfigAsync(),
+      getAllQuizzes(),
+      getAllCertTemplates()
+    ]);
+  } catch (err) {
+    console.error('Admin panel load error:', err);
+    app.innerHTML = `
+      ${renderNavbar()}
+      <div class="page fade-in">
+        <div class="container" style="text-align:center; padding-top: 80px;">
+          <div class="clay-card" style="max-width: 500px; margin: 0 auto; padding: 3rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem">⚠️</div>
+            <h2 style="margin-bottom: 0.5rem">Failed to Load Admin Panel</h2>
+            <p style="color: var(--text-sub); margin-bottom: 0.5rem">Could not connect to the server. Please check if the backend is running.</p>
+            <p style="color: var(--text-sub); font-size: 0.8rem; margin-bottom: 1.5rem">Error: ${escapeHtml(err.message || 'Unknown error')}</p>
+            <button class="btn btn-primary" onclick="location.reload()">🔄 Retry</button>
+            <a href="#/" class="btn btn-secondary" style="margin-left: 0.5rem">Go Home</a>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
 
   app.innerHTML = `
     ${renderNavbar()}
