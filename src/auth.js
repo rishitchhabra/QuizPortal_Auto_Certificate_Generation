@@ -1,4 +1,4 @@
-import { getAdminConfig, getAdminConfigAsync, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser } from './store.js';
+import { getAdminConfigAsync, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser } from './store.js';
 
 // SHA-256 hash
 export async function hashPassword(password) {
@@ -27,14 +27,7 @@ export async function hashPassword(password) {
 // Admin Setup (first time)
 export async function setupAdmin(id, password) {
   const hash = await hashPassword(password);
-  const cfg = getAdminConfig();
-  cfg.id = id; cfg.passwordHash = hash; cfg.isSetup = true;
-  if (window.SERVER_BASE) {
-    // push to server (create)
-    await saveAdminConfig({ id: cfg.id, passwordHash: cfg.passwordHash, adminEmails: cfg.adminEmails || [], googleClientId: cfg.googleClientId || '' });
-  } else {
-    await saveAdminConfig(cfg);
-  }
+  await saveAdminConfig({ id, passwordHash: hash, adminEmails: [], googleClientId: '' });
   setAuthSession({ type: 'admin', id });
   return true;
 }
@@ -42,17 +35,11 @@ export async function setupAdmin(id, password) {
 // Admin Login
 export async function adminLogin(id, password) {
   const hash = await hashPassword(password);
-  if (window.SERVER_BASE) {
-    try {
-      const r = await fetch(`${window.SERVER_BASE}/api/admin-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, passwordHash: hash }) });
-      if (r.ok) { setAuthSession({ type: 'admin', id }); return true; }
-      return false;
-    } catch (e) { return false; }
-  }
-  const cfg = getAdminConfig();
-  if (!cfg.isSetup) return false;
-  if (cfg.id === id && cfg.passwordHash === hash) { setAuthSession({ type: 'admin', id }); return true; }
-  // Check if google user email is admin
+  try {
+    const base = window.SERVER_BASE ?? '';
+    const r = await fetch(`${base}/api/admin-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, passwordHash: hash }) });
+    if (r.ok) { setAuthSession({ type: 'admin', id }); return true; }
+  } catch {}
   return false;
 }
 
@@ -61,10 +48,6 @@ export function adminLogout() { clearAuthSession(); }
 export function isAdminLoggedIn() {
   const session = getAuthSession();
   if (session?.type === 'admin') return true;
-  // Check Google user in admin emails
-  const guser = getGoogleUser();
-  const cfg = getAdminConfig();
-  if (guser && cfg.adminEmails.includes(guser.email)) return true;
   return false;
 }
 
@@ -107,4 +90,11 @@ function parseJwt(token) {
   } catch { return null; }
 }
 
-export function getGoogleClientId() { return getAdminConfig().googleClientId || ''; }
+export async function getGoogleClientId() {
+  try {
+    const cfg = await getAdminConfigAsync();
+    return cfg.googleClientId || '';
+  } catch {
+    return '';
+  }
+}

@@ -291,23 +291,23 @@ function validateQuiz(app) {
 }
 
 function bindEvents(app) {
-  app.querySelector('#btn-save')?.addEventListener('click', () => {
+  app.querySelector('#btn-save')?.addEventListener('click', async () => {
     if (!validateQuiz(app)) return;
-    saveQuiz(currentQuiz);
+    await saveQuiz(currentQuiz);
     showToast('Quiz saved! 💾');
   });
 
-  app.querySelector('#btn-toggle-live')?.addEventListener('click', () => {
+  app.querySelector('#btn-toggle-live')?.addEventListener('click', async () => {
     if (!validateQuiz(app)) return;
     currentQuiz.isPublished = !currentQuiz.isPublished;
-    saveQuiz(currentQuiz);
+    await saveQuiz(currentQuiz);
     showToast(currentQuiz.isPublished ? 'Quiz status set to LIVE! 🚀' : 'Quiz stopped (Inactive)');
     renderPage(app);
   });
 
-  app.querySelector('#btn-preview')?.addEventListener('click', () => {
+  app.querySelector('#btn-preview')?.addEventListener('click', async () => {
     if (!validateQuiz(app)) return;
-    saveQuiz(currentQuiz);
+    await saveQuiz(currentQuiz);
     window.location.hash = '#/take/' + currentQuiz.id;
   });
 
@@ -319,94 +319,94 @@ function bindEvents(app) {
     });
   });
 
-  app.querySelector('#btn-add-q')?.addEventListener('click', () => {
+  app.querySelector('#btn-add-q')?.addEventListener('click', async () => {
     sync(app);
     currentQuiz.questions.push({ id: generateId(), type: 'mcq', text: '', options: ['', '', '', ''], correctAnswer: '', points: 1, required: true });
-    saveQuiz(currentQuiz);
+    await saveQuiz(currentQuiz);
     renderPage(app);
   });
 
-  app.querySelector('#btn-add-tf')?.addEventListener('click', () => {
+  app.querySelector('#btn-add-tf')?.addEventListener('click', async () => {
     sync(app);
     currentQuiz.questions.push({ id: generateId(), type: 'tf', text: '', correctAnswer: '', points: 1, required: true });
-    saveQuiz(currentQuiz);
+    await saveQuiz(currentQuiz);
     renderPage(app);
   });
 
   app.querySelectorAll('.q-radio-mcq, .q-radio-tf').forEach(el => {
-    el.addEventListener('change', () => {
+    el.addEventListener('change', async () => {
       sync(app);
       currentQuiz.questions[parseInt(el.dataset.qi)].correctAnswer = el.dataset.oi;
-      saveQuiz(currentQuiz);
+      await saveQuiz(currentQuiz);
       renderPage(app);
     });
   });
 
   app.querySelectorAll('.option-delete').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       sync(app);
       const qi = parseInt(el.dataset.qi), oi = parseInt(el.dataset.oi), q = currentQuiz.questions[qi];
       if (q.options.length <= 2) { showToast('Need at least 2 options', 'error'); return; }
       q.options.splice(oi, 1);
       if (q.correctAnswer === oi.toString()) q.correctAnswer = '';
       else if (parseInt(q.correctAnswer) > oi) q.correctAnswer = (parseInt(q.correctAnswer) - 1).toString();
-      saveQuiz(currentQuiz);
+      await saveQuiz(currentQuiz);
       renderPage(app);
     });
   });
 
   app.querySelectorAll('.q-add-opt').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       sync(app);
       const qi = parseInt(el.dataset.qi);
       if (currentQuiz.questions[qi].options.length >= 8) { showToast('Maximum 8 options', 'error'); return; }
       currentQuiz.questions[qi].options.push('');
-      saveQuiz(currentQuiz);
+      await saveQuiz(currentQuiz);
       renderPage(app);
     });
   });
 
   app.querySelectorAll('.q-dup').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       sync(app);
       const qi = parseInt(el.dataset.qi);
       const dup = JSON.parse(JSON.stringify(currentQuiz.questions[qi]));
       dup.id = generateId();
       currentQuiz.questions.splice(qi + 1, 0, dup);
-      saveQuiz(currentQuiz);
+      await saveQuiz(currentQuiz);
       renderPage(app);
     });
   });
 
   app.querySelectorAll('.q-up').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       sync(app);
       const qi = parseInt(el.dataset.qi);
       if (qi > 0) {
         [currentQuiz.questions[qi], currentQuiz.questions[qi - 1]] = [currentQuiz.questions[qi - 1], currentQuiz.questions[qi]];
-        saveQuiz(currentQuiz);
+        await saveQuiz(currentQuiz);
         renderPage(app);
       }
     });
   });
 
   app.querySelectorAll('.q-down').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       sync(app);
       const qi = parseInt(el.dataset.qi);
       if (qi < currentQuiz.questions.length - 1) {
         [currentQuiz.questions[qi], currentQuiz.questions[qi + 1]] = [currentQuiz.questions[qi + 1], currentQuiz.questions[qi]];
-        saveQuiz(currentQuiz);
+        await saveQuiz(currentQuiz);
         renderPage(app);
       }
     });
   });
 
   app.querySelectorAll('.q-del').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       sync(app);
       currentQuiz.questions.splice(parseInt(el.dataset.qi), 1);
-      saveQuiz(currentQuiz);
+      await saveQuiz(currentQuiz);
       renderPage(app);
     });
   });

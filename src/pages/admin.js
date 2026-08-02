@@ -1,5 +1,5 @@
 import { 
-  getAdminConfig, getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
+  getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
   getAllCertTemplates, deleteCertTemplate 
 } from '../store.js';
 import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard } from '../utils.js';
@@ -231,11 +231,11 @@ export async function renderAdminPanel(app) {
 
   // Toggle Live / Stop Quiz
   app.querySelectorAll('.toggle-live').forEach(b => {
-    b.addEventListener('click', () => {
+    b.addEventListener('click', async () => {
       const q = quizzes.find(x => x.id === b.dataset.id);
       if (q) {
         q.isPublished = !q.isPublished;
-        saveQuiz(q);
+        await saveQuiz(q);
         showToast(q.isPublished ? 'Quiz is now LIVE! 🚀' : 'Quiz STOPPED (Inactive)');
         renderAdminPanel(app);
       }
@@ -245,8 +245,8 @@ export async function renderAdminPanel(app) {
   // Delete Quiz
   app.querySelectorAll('.del-quiz').forEach(b => {
     b.addEventListener('click', () => {
-      showModal('Delete Quiz?', '<p>This quiz and all participant responses will be permanently deleted.</p>', () => {
-        deleteQuiz(b.dataset.id);
+      showModal('Delete Quiz?', '<p>This quiz and all participant responses will be permanently deleted.</p>', async () => {
+        await deleteQuiz(b.dataset.id);
         showToast('Quiz deleted');
         renderAdminPanel(app);
       });
@@ -267,8 +267,8 @@ export async function renderAdminPanel(app) {
   // Delete Template
   app.querySelectorAll('.del-t').forEach(b => {
     b.addEventListener('click', () => {
-      showModal('Delete Template?', '<p>Delete this certificate template permanently?</p>', () => {
-        deleteCertTemplate(b.dataset.id);
+      showModal('Delete Template?', '<p>Delete this certificate template permanently?</p>', async () => {
+        await deleteCertTemplate(b.dataset.id);
         showToast('Template deleted');
         renderAdminPanel(app);
       });
@@ -279,14 +279,10 @@ export async function renderAdminPanel(app) {
   app.querySelector('#btn-save-oauth').addEventListener('click', async () => {
     const c = await getAdminConfigAsync();
     c.googleClientId = app.querySelector('#google-client-id').value.trim();
-    if (window.SERVER_BASE) {
-      const cur = prompt('Enter current admin password to save settings');
-      if (!cur) { showToast('Password required', 'error'); return; }
-      const curHash = await hashPassword(cur);
-      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
-    } else {
-      await saveAdminConfig(c);
-    }
+    const cur = prompt('Enter current admin password to save settings');
+    if (!cur) { showToast('Password required', 'error'); return; }
+    const curHash = await hashPassword(cur);
+    await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
     showToast('Google OAuth Client ID saved!');
   });
 
@@ -298,14 +294,8 @@ export async function renderAdminPanel(app) {
     if (nw.length < 4) { showToast('Min 4 characters', 'error'); return; }
     const c = await getAdminConfigAsync();
     const curHash = await hashPassword(cur);
-    if (!window.SERVER_BASE) {
-      if (curHash !== c.passwordHash) { showToast('Current password is incorrect', 'error'); return; }
-      c.passwordHash = await hashPassword(nw);
-      await saveAdminConfig(c);
-    } else {
-      const newHash = await hashPassword(nw);
-      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, passwordHash: newHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
-    }
+    const newHash = await hashPassword(nw);
+    await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, passwordHash: newHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
     showToast('Admin password updated successfully!');
     app.querySelector('#current-pass').value = '';
     app.querySelector('#new-pass').value = '';
@@ -319,14 +309,10 @@ export async function renderAdminPanel(app) {
     if (!c.adminEmails) c.adminEmails = [];
     if (c.adminEmails.includes(email)) { showToast('Email already in admin list', 'error'); return; }
     c.adminEmails.push(email);
-    if (window.SERVER_BASE) {
-      const cur = prompt('Enter current admin password to update admin emails');
-      if (!cur) { showToast('Password required', 'error'); return; }
-      const curHash = await hashPassword(cur);
-      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
-    } else {
-      await saveAdminConfig(c);
-    }
+    const cur = prompt('Enter current admin password to update admin emails');
+    if (!cur) { showToast('Password required', 'error'); return; }
+    const curHash = await hashPassword(cur);
+    await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
     showToast('Admin email added!');
     renderAdminPanel(app);
   });
@@ -336,14 +322,10 @@ export async function renderAdminPanel(app) {
     btn.addEventListener('click', async () => {
       const c = await getAdminConfigAsync();
       c.adminEmails.splice(parseInt(btn.dataset.idx), 1);
-      if (window.SERVER_BASE) {
-        const cur = prompt('Enter current admin password to update admin emails');
-        if (!cur) { showToast('Password required', 'error'); return; }
-        const curHash = await hashPassword(cur);
-        await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
-      } else {
-        await saveAdminConfig(c);
-      }
+      const cur = prompt('Enter current admin password to update admin emails');
+      if (!cur) { showToast('Password required', 'error'); return; }
+      const curHash = await hashPassword(cur);
+      await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
       showToast('Admin email removed');
       renderAdminPanel(app);
     });

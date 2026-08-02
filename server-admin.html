@@ -1,183 +1,312 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Gyan Quiz Admin</title>
+  <title>PostgreSQL Manager</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body{font-family:Inter,Arial,Helvetica,sans-serif;margin:20px}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border:1px solid #eee}
-    .row-actions button{margin-right:6px}
+    :root { color-scheme: light; --border:#d8dee8; --muted:#64748b; --bg:#f7f9fc; --panel:#fff; --ink:#0f172a; --accent:#2563eb; --danger:#dc2626; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 22px; background:var(--panel); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:2; }
+    h1 { margin:0; font-size:20px; }
+    h2 { margin:0 0 12px; font-size:16px; }
+    main { display:grid; grid-template-columns:280px minmax(0,1fr); min-height:calc(100vh - 66px); }
+    aside { border-right:1px solid var(--border); background:var(--panel); padding:18px; }
+    section { padding:18px; }
+    button, select, input, textarea { font: inherit; }
+    button { border:1px solid var(--border); background:#fff; color:var(--ink); border-radius:8px; padding:8px 11px; cursor:pointer; }
+    button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+    button.danger { background:var(--danger); color:#fff; border-color:var(--danger); }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    input, select, textarea { width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 10px; background:#fff; color:var(--ink); }
+    textarea { min-height:110px; resize:vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px; }
+    label { display:block; font-size:12px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+    .stack { display:grid; gap:12px; }
+    .row { display:flex; align-items:center; gap:8px; }
+    .row > * { min-width:0; }
+    .grow { flex:1; }
+    .muted { color:var(--muted); font-size:13px; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+    .table-list { display:grid; gap:6px; margin-top:12px; }
+    .table-list button { text-align:left; border-radius:8px; }
+    .table-list button.active { background:#eaf1ff; border-color:#a8c4ff; color:#174ea6; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; margin-bottom:14px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+    .scroll { overflow:auto; max-width:100%; border:1px solid var(--border); border-radius:10px; background:#fff; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; border-bottom:1px solid var(--border); padding:9px 10px; vertical-align:top; white-space:nowrap; }
+    th { background:#f1f5f9; font-size:12px; color:#475569; position:sticky; top:0; }
+    td code { white-space:pre-wrap; word-break:break-word; }
+    .message { min-height:20px; font-size:13px; }
+    .ok { color:#15803d; }
+    .error { color:var(--danger); }
+    .columns { display:grid; gap:8px; }
+    @media (max-width: 860px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--border); } .grid { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
-  <h1>Gyan Quiz Admin UI</h1>
-  <section>
-    <h2>Quizzes</h2>
-    <div id="quizzes"></div>
-  </section>
-  <section>
-    <h2>Submissions</h2>
-    <div id="subs"></div>
-  </section>
-  <section>
-    <h2>Certificate Templates</h2>
-    <div id="temps"></div>
-  </section>
-
-  <section>
-    <h2>Database Tables</h2>
+  <header>
     <div>
-      <label>Create table SQL:</label><br>
-      <textarea id="create-sql" rows="4" style="width:100%" placeholder="e.g. CREATE TABLE mydata (name TEXT, age INTEGER);"></textarea>
-      <div style="margin-top:8px"><button id="create-table">Create Table</button></div>
+      <h1>PostgreSQL Manager</h1>
+      <div class="muted">Gyan Quiz database tables and records</div>
     </div>
-    <div id="tables" style="margin-top:12px"></div>
-    <div id="table-rows" style="margin-top:12px"></div>
-  </section>
+    <button id="refresh" class="primary">Refresh</button>
+  </header>
+
+  <main>
+    <aside>
+      <div class="panel">
+        <h2>Tables</h2>
+        <div id="table-count" class="muted">Loading...</div>
+        <div id="tables" class="table-list"></div>
+      </div>
+    </aside>
+
+    <section>
+      <div class="grid">
+        <div class="panel stack">
+          <h2>Create Table</h2>
+          <div>
+            <label for="new-table-name">Table Name</label>
+            <input id="new-table-name" placeholder="student_notes">
+          </div>
+          <div class="columns" id="columns"></div>
+          <div class="row">
+            <button id="add-column">Add Column</button>
+            <button id="create-table" class="primary">Create Table</button>
+          </div>
+        </div>
+
+        <div class="panel stack">
+          <h2>Add Row</h2>
+          <div class="muted" id="row-target">Select a table first.</div>
+          <textarea id="row-json" placeholder='{"name":"Riya","score":95}'></textarea>
+          <button id="add-row" class="primary">Insert Row</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <div>
+            <h2 id="selected-title">Select a table</h2>
+            <div id="schema" class="muted"></div>
+          </div>
+          <div class="row">
+            <button id="reload-rows">Reload Rows</button>
+            <button id="drop-table" class="danger">Drop Table</button>
+          </div>
+        </div>
+        <div id="message" class="message"></div>
+        <div id="rows" class="scroll"></div>
+      </div>
+    </section>
+  </main>
 
   <script>
-    async function api(path, opts){
-      const res = await fetch('/api' + path, opts);
-      if (!res.ok) throw new Error(res.statusText);
-      return res.json();
+    const coreTables = new Set(['admin_config', 'cert_templates', 'quizzes', 'submissions']);
+    const state = { tables: [], selected: '' };
+
+    async function api(path, options = {}) {
+      const response = await fetch('/api' + path, options);
+      if (!response.ok) {
+        let message = response.statusText;
+        try { message = (await response.json()).error || message; } catch {}
+        throw new Error(message);
+      }
+      return response.json();
     }
 
-    // compute password hash (SHA-256 hex) with fallback DJB2
-    async function computeHash(password) {
-      try {
-        if (window.crypto?.subtle?.digest) {
-          const data = new TextEncoder().encode(password);
-          const buf = await window.crypto.subtle.digest('SHA-256', data);
-          return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-      } catch (e) { console.warn('crypto error', e); }
-      // DJB2 fallback
-      let h = 5381;
-      for (let i = 0; i < password.length; i++) { h = ((h << 5) + h) + password.charCodeAt(i); h = h >>> 0; }
-      return h.toString(16).padStart(8, '0');
+    async function hashPassword(password) {
+      if (window.crypto?.subtle?.digest) {
+        const data = new TextEncoder().encode(password);
+        const buffer = await window.crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(buffer)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      }
+      let hash = 5381;
+      for (let index = 0; index < password.length; index++) hash = (((hash << 5) + hash) + password.charCodeAt(index)) >>> 0;
+      return hash.toString(16).padStart(8, '0');
     }
 
-    async function loadQuizzes(){
-      const q = await api('/quizzes');
-      const el = document.getElementById('quizzes');
-      if(!q.length){ el.innerHTML='<div>No quizzes</div>'; return; }
-      el.innerHTML='';
-      const t=document.createElement('table');
-      t.innerHTML='<thead><tr><th>ID</th><th>Title</th><th>Published</th><th>Actions</th></tr></thead>';
-      const b=document.createElement('tbody');
-      q.forEach(x=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td>${x.id}</td><td>${x.title||''}</td><td>${x.isPublished? 'Yes':'No'}</td><td class="row-actions"></td>`;
-        const actions=tr.querySelector('.row-actions');
-        const del=document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete?')){ await api('/quizzes/'+x.id,{method:'DELETE'}); loadQuizzes(); }};
-        const edit=document.createElement('button'); edit.textContent='Edit JSON'; edit.onclick=()=>{ const j=prompt('Edit quiz JSON', JSON.stringify(x)); try{ const parsed=JSON.parse(j); api('/quizzes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsed)}).then(loadQuizzes); }catch(e){alert('Invalid JSON')} };
-        actions.appendChild(edit); actions.appendChild(del);
-        b.appendChild(tr);
+    function setMessage(text, type = '') {
+      const element = document.getElementById('message');
+      element.textContent = text;
+      element.className = 'message ' + type;
+    }
+
+    function renderTables() {
+      document.getElementById('table-count').textContent = `${state.tables.length} tables`;
+      const list = document.getElementById('tables');
+      list.innerHTML = '';
+      state.tables.forEach((table) => {
+        const button = document.createElement('button');
+        button.textContent = table;
+        button.className = table === state.selected ? 'active' : '';
+        button.onclick = () => selectTable(table);
+        list.appendChild(button);
       });
-      t.appendChild(b); el.appendChild(t);
     }
 
-    async function loadSubs(){
-      const s = await api('/submissions');
-      const el = document.getElementById('subs');
-      if(!s.length){ el.innerHTML='<div>No submissions</div>'; return; }
-      el.innerHTML='';
-      const t=document.createElement('table');
-      t.innerHTML='<thead><tr><th>ID</th><th>Quiz</th><th>Participant</th><th>Score</th><th>Submitted At</th></tr></thead>';
-      const b=document.createElement('tbody');
-      s.forEach(x=>{
-        const tr=document.createElement('tr');
-        const p = x.participant || {};
-        tr.innerHTML=`<td>${x.id}</td><td>${x.quizId}</td><td>${p.name||p.email||'-'}</td><td>${x.score}/${x.totalPoints}</td><td>${x.submittedAt}</td>`;
-        b.appendChild(tr);
-      });
-      t.appendChild(b); el.appendChild(t);
+    function addColumnRow(name = '', type = 'TEXT', required = false) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `
+        <input class="column-name grow" placeholder="column_name" value="${escapeHtml(name)}">
+        <select class="column-type" style="width:135px">
+          ${['TEXT','INTEGER','BIGINT','NUMERIC','BOOLEAN','DATE','TIMESTAMPTZ','JSONB','UUID'].map((item) => `<option ${item === type ? 'selected' : ''}>${item}</option>`).join('')}
+        </select>
+        <label class="row" style="width:auto;margin:0"><input class="column-required" type="checkbox" style="width:auto" ${required ? 'checked' : ''}> Required</label>
+        <button type="button" class="remove-column">Remove</button>
+      `;
+      row.querySelector('.remove-column').onclick = () => row.remove();
+      document.getElementById('columns').appendChild(row);
     }
 
-    async function loadTemps(){
-      const tpls = await api('/cert-templates');
-      const el = document.getElementById('temps');
-      if(!tpls.length){ el.innerHTML='<div>No templates</div>'; return; }
-      el.innerHTML='';
-      const t=document.createElement('table');
-      t.innerHTML='<thead><tr><th>ID</th><th>Name</th><th>Actions</th></tr></thead>';
-      const b=document.createElement('tbody');
-      tpls.forEach(x=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td>${x.id}</td><td>${x.name||''}</td><td class="row-actions"></td>`;
-        const actions=tr.querySelector('.row-actions');
-        const del=document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete?')){ await api('/cert-templates/'+x.id,{method:'DELETE'}); loadTemps(); }};
+    async function loadTables() {
+      state.tables = await api('/tables');
+      if (!state.selected && state.tables.length) state.selected = state.tables[0];
+      if (state.selected && !state.tables.includes(state.selected)) state.selected = state.tables[0] || '';
+      renderTables();
+      if (state.selected) await selectTable(state.selected);
+    }
+
+    async function selectTable(table) {
+      state.selected = table;
+      renderTables();
+      document.getElementById('selected-title').textContent = table;
+      document.getElementById('row-target').textContent = `Insert into ${table}`;
+      document.getElementById('drop-table').disabled = coreTables.has(table);
+      const schema = await api(`/tables/${encodeURIComponent(table)}/schema`);
+      document.getElementById('schema').textContent = schema.map((column) => `${column.column_name} ${column.data_type}`).join(' · ');
+      await loadRows();
+    }
+
+    async function loadRows() {
+      if (!state.selected) return;
+      const rows = await api(`/tables/${encodeURIComponent(state.selected)}/rows`);
+      renderRows(rows);
+    }
+
+    function renderRows(rows) {
+      const container = document.getElementById('rows');
+      if (!rows.length) {
+        container.innerHTML = '<div style="padding:16px" class="muted">No rows yet.</div>';
+        return;
+      }
+      const headers = Object.keys(rows[0]);
+      const table = document.createElement('table');
+      table.innerHTML = `<thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}<th>Actions</th></tr></thead>`;
+      const body = document.createElement('tbody');
+      rows.forEach((row) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = headers.map((header) => `<td><code>${escapeHtml(formatCell(row[header]))}</code></td>`).join('') + '<td></td>';
+        const actions = tr.querySelector('td:last-child');
+        const del = document.createElement('button');
+        del.textContent = 'Delete';
+        del.className = 'danger';
+        del.disabled = !Object.prototype.hasOwnProperty.call(row, 'id');
+        del.onclick = () => deleteRow(row.id);
         actions.appendChild(del);
-        b.appendChild(tr);
+        body.appendChild(tr);
       });
-      t.appendChild(b); el.appendChild(t);
+      table.appendChild(body);
+      container.innerHTML = '';
+      container.appendChild(table);
     }
 
-    (async()=>{ try{ await loadQuizzes(); await loadSubs(); await loadTemps(); }catch(e){ console.error(e); alert('Error: '+e.message); } })();
-    // Tables management
-    async function loadTables(){
-      try{
-        const t = await api('/tables');
-        const el = document.getElementById('tables');
-        if(!t.length){ el.innerHTML='<div>No tables</div>'; return; }
-        el.innerHTML='';
-        const ul = document.createElement('ul');
-        t.forEach(name=>{
-          const li = document.createElement('li');
-          li.innerHTML = `<strong>${name}</strong> `;
-          const view = document.createElement('button'); view.textContent='View rows'; view.onclick=()=>viewRows(name);
-          const drop = document.createElement('button'); drop.textContent='Drop'; drop.style.marginLeft='6px'; drop.onclick=async()=>{ if(confirm('Drop table '+name+'?')){ const pwd = prompt('Enter current admin password to drop table'); if(!pwd) return; const curHash = await computeHash(pwd); await api('/tables/'+name,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPasswordHash:curHash})}); loadTables(); document.getElementById('table-rows').innerHTML=''; }};
-          li.appendChild(view); li.appendChild(drop); ul.appendChild(li);
+    function formatCell(value) {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') return JSON.stringify(value);
+      return String(value);
+    }
+
+    async function withPassword(callback) {
+      const password = prompt('Enter app admin password');
+      if (!password) return;
+      await callback(await hashPassword(password));
+    }
+
+    async function createTable() {
+      const name = document.getElementById('new-table-name').value.trim();
+      const columns = Array.from(document.querySelectorAll('#columns .row')).map((row) => ({
+        name: row.querySelector('.column-name').value.trim(),
+        type: row.querySelector('.column-type').value,
+        required: row.querySelector('.column-required').checked
+      })).filter((column) => column.name);
+      await withPassword(async (currentPasswordHash) => {
+        await api('/tables', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, columns, currentPasswordHash })
         });
-        el.appendChild(ul);
-      }catch(e){ console.error(e); alert('Tables error: '+e.message); }
+        setMessage(`Created table ${name}`, 'ok');
+        document.getElementById('new-table-name').value = '';
+        document.getElementById('columns').innerHTML = '';
+        addColumnRow();
+        state.selected = name;
+        await loadTables();
+      });
     }
 
-    document.getElementById('create-table').onclick = async ()=>{
-      const sql = document.getElementById('create-sql').value.trim();
-      if(!sql){ alert('Enter CREATE TABLE SQL'); return; }
-      try{
-        const pwd = prompt('Enter current admin password to create table');
-        if (!pwd) return alert('Password required');
-        const curHash = await computeHash(pwd);
-        await api('/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sql, currentPasswordHash: curHash})});
-        document.getElementById('create-sql').value=''; loadTables();
-      }catch(e){ alert('Create error: '+e.message); }
-    };
-
-    async function viewRows(name){
-      try{
-        const rows = await api('/tables/'+encodeURIComponent(name)+'/rows');
-        const el = document.getElementById('table-rows');
-        el.innerHTML = `<h3>Rows: ${name}</h3>`;
-        if(!rows.length){ el.innerHTML += '<div>No rows</div>'; return; }
-        const t=document.createElement('table');
-        // headers
-        const hdrs = Object.keys(rows[0]);
-        t.innerHTML = '<thead><tr>'+hdrs.map(h=>`<th>${h}</th>`).join('')+'<th>Actions</th></tr></thead>';
-        const b=document.createElement('tbody');
-        rows.forEach(r=>{
-          const tr=document.createElement('tr');
-          tr.innerHTML = hdrs.map(h=>`<td>${escapeHtml(String(r[h]===undefined?'':r[h]))}</td>`).join('') + `<td></td>`;
-          const actions = tr.querySelector('td:last-child');
-          const del = document.createElement('button'); del.textContent='Delete'; del.onclick=async()=>{ if(confirm('Delete row?')){ const pwd = prompt('Enter current admin password to delete row'); if(!pwd) return; const curHash = await computeHash(pwd); await api('/tables/'+encodeURIComponent(name)+'/rows/'+r.rowid,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPasswordHash:curHash})}); viewRows(name); } };
-          actions.appendChild(del);
-          b.appendChild(tr);
+    async function addRow() {
+      if (!state.selected) return;
+      let data;
+      try { data = JSON.parse(document.getElementById('row-json').value || '{}'); }
+      catch { setMessage('Row JSON is invalid', 'error'); return; }
+      await withPassword(async (currentPasswordHash) => {
+        await api(`/tables/${encodeURIComponent(state.selected)}/rows`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...data, currentPasswordHash })
         });
-        t.appendChild(b); el.appendChild(t);
-        // add row button
-        const add = document.createElement('button'); add.textContent='Add row (JSON)'; add.style.marginTop='8px'; add.onclick=async()=>{ const j = prompt('Enter row as JSON object, e.g. {"name":"Alice","age":10}'); try{ const obj = JSON.parse(j); const pwd = prompt('Enter current admin password to add row'); if(!pwd) return; const curHash = await computeHash(pwd); obj.currentPasswordHash = curHash; await api('/tables/'+encodeURIComponent(name)+'/rows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)}); viewRows(name); }catch(err){ alert('Invalid JSON or insert failed: '+err.message); } };
-        el.appendChild(add);
-      }catch(e){ console.error(e); alert('Rows error: '+e.message); }
+        setMessage('Row inserted', 'ok');
+        document.getElementById('row-json').value = '';
+        await loadRows();
+      });
     }
 
-    // escapeHtml used earlier? define simple one
-    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    async function deleteRow(id) {
+      if (!state.selected || !confirm(`Delete row ${id}?`)) return;
+      await withPassword(async (currentPasswordHash) => {
+        await api(`/tables/${encodeURIComponent(state.selected)}/rows/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPasswordHash })
+        });
+        setMessage('Row deleted', 'ok');
+        await loadRows();
+      });
+    }
 
-    // load tables on start
-    (async()=>{ try{ await loadTables(); }catch(e){ /* ignore */ } })();
+    async function dropTable() {
+      if (!state.selected || coreTables.has(state.selected)) return;
+      if (!confirm(`Drop table ${state.selected}?`)) return;
+      await withPassword(async (currentPasswordHash) => {
+        await api(`/tables/${encodeURIComponent(state.selected)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentPasswordHash })
+        });
+        setMessage(`Dropped table ${state.selected}`, 'ok');
+        state.selected = '';
+        await loadTables();
+      });
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
+    }
+
+    document.getElementById('refresh').onclick = () => loadTables().catch((error) => setMessage(error.message, 'error'));
+    document.getElementById('reload-rows').onclick = () => loadRows().catch((error) => setMessage(error.message, 'error'));
+    document.getElementById('add-column').onclick = () => addColumnRow();
+    document.getElementById('create-table').onclick = () => createTable().catch((error) => setMessage(error.message, 'error'));
+    document.getElementById('add-row').onclick = () => addRow().catch((error) => setMessage(error.message, 'error'));
+    document.getElementById('drop-table').onclick = () => dropTable().catch((error) => setMessage(error.message, 'error'));
+
+    addColumnRow('label', 'TEXT', true);
+    addColumnRow('details', 'JSONB', false);
+    loadTables().catch((error) => setMessage(error.message, 'error'));
   </script>
 </body>
 </html>

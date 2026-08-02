@@ -377,9 +377,9 @@ function bindDesignerEvents(app) {
     };
   });
 
-  document.getElementById('btn-save')?.addEventListener('click', () => {
+  document.getElementById('btn-save')?.addEventListener('click', async () => {
     template.name = document.getElementById('tmpl-name')?.value || 'Untitled Certificate';
-    saveCertTemplate(template);
+    await saveCertTemplate(template);
     showToast('Certificate template saved! 🎨');
   });
 }

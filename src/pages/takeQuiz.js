@@ -66,7 +66,7 @@ export async function renderTakeQuiz(app, params) {
   answers = {}; quizStarted = false; quizSubmitted = false; participant = {};
   if (timerInterval) clearInterval(timerInterval);
 
-  const clientId = getGoogleClientId();
+  const clientId = await getGoogleClientId();
   const guser = getGoogleUser();
 
   if (!clientId) {
@@ -154,10 +154,10 @@ function renderGoogleSignIn(app, clientId) {
   }
 }
 
-function renderParticipantForm(app) {
+async function renderParticipantForm(app) {
   // Check 1 Response Limit
   if (quiz.limitPerUser && participant.email) {
-    const existing = getSubmissionsByEmail(quiz.id, participant.email);
+    const existing = await getSubmissionsByEmail(quiz.id, participant.email);
     if (existing.length > 0) {
       app.innerHTML = `${renderNavbar()}
         <div class="page fade-in">
@@ -358,7 +358,7 @@ function startTimer() {
   }, 1000);
 }
 
-function submitQuiz() {
+async function submitQuiz() {
   if (quizSubmitted) return;
   quizSubmitted = true;
   if (timerInterval) clearInterval(timerInterval);
@@ -376,7 +376,7 @@ function submitQuiz() {
   const passed = percent >= (quiz.passingPercent || 50);
   const timeTaken = (quiz.timerMinutes * 60) - timeLeft;
   const submission = { id: generateId(), quizId: quiz.id, participant, answers, score, totalPoints, percent, passed, timeTaken, questionResults, submittedAt: new Date().toISOString() };
-  saveSubmission(submission);
+  await saveSubmission(submission);
   renderResults(submission);
 }
 
