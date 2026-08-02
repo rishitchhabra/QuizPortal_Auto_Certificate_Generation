@@ -5,6 +5,14 @@ import path from 'path';
 import fs from 'fs';
 import { Pool } from 'pg';
 import basicAuth from 'express-basic-auth';
+import multer from 'multer';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3001;
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/certificate';
@@ -16,6 +24,26 @@ const ADMIN_PASS = process.env.ADMIN_PASS || 'admin';
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
+
+// Ensure uploads directory exists for PPTX templates
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'pptx-templates');
+const TMP_DIR = path.join(process.cwd(), 'tmp');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+
+// Multer for PPTX file uploads
+const pptxUpload = multer({
+  dest: UPLOADS_DIR,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.pptx') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .pptx files are allowed'));
+    }
+  }
+});
 
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: DB_SSL });
 
@@ -392,8 +420,132 @@ app.put('/api/cert-templates/:id', asyncHandler(async (req, res) => {
 }));
 
 app.delete('/api/cert-templates/:id', asyncHandler(async (req, res) => {
+  // Also remove PPTX file from disk if exists
+  const existing = await pool.query('SELECT * FROM cert_templates WHERE id = $1', [req.params.id]);
+  if (existing.rows[0]) {
+    const data = parseJson(existing.rows[0].data, {});
+    if (data.pptxFilename) {
+      const filePath = path.join(UPLOADS_DIR, data.pptxFilename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+  }
   await pool.query('DELETE FROM cert_templates WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+// ========== PPTX Certificate Upload & Generation ==========
+
+// Upload a PPTX file as a certificate template
+app.post('/api/cert-templates/upload-pptx', pptxUpload.single('pptx'), asyncHandler(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const templateId = req.body.id || generateId();
+  const templateName = req.body.name || 'Untitled PPTX Template';
+
+  // Rename uploaded file to templateId.pptx
+  const finalFilename = `${templateId}.pptx`;
+  const finalPath = path.join(UPLOADS_DIR, finalFilename);
+  fs.renameSync(req.file.path, finalPath);
+
+  // Quick-validate the PPTX by trying to open it with PizZip
+  try {
+    const buf = fs.readFileSync(finalPath);
+    new PizZip(buf);
+  } catch (e) {
+    fs.unlinkSync(finalPath);
+    return res.status(400).json({ error: 'Invalid PPTX file: ' + e.message });
+  }
+
+  // Save template metadata to DB
+  const payload = {
+    id: templateId,
+    name: templateName,
+    type: 'pptx',
+    pptxFilename: finalFilename,
+    elements: [],
+    backgroundImage: '',
+    createdAt: new Date().toISOString()
+  };
+  await upsertCertTemplate(payload);
+
+  res.json({ ok: true, id: templateId, name: templateName, type: 'pptx' });
+}));
+
+// Generate a certificate from a PPTX template (replace placeholders -> return PDF or PPTX)
+app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
+  const { templateId, data } = req.body;
+  if (!templateId) return res.status(400).json({ error: 'templateId required' });
+
+  const result = await pool.query('SELECT * FROM cert_templates WHERE id = $1', [templateId]);
+  if (!result.rows[0]) return res.status(404).json({ error: 'Template not found' });
+
+  const template = mapCertTemplate(result.rows[0]);
+  if (template.type !== 'pptx' || !template.pptxFilename) {
+    return res.status(400).json({ error: 'Not a PPTX template' });
+  }
+
+  const pptxPath = path.join(UPLOADS_DIR, template.pptxFilename);
+  if (!fs.existsSync(pptxPath)) {
+    return res.status(404).json({ error: 'PPTX file not found on server' });
+  }
+
+  // Read PPTX and replace placeholders
+  const pptxBuffer = fs.readFileSync(pptxPath);
+  const zip = new PizZip(pptxBuffer);
+  const doc = new Docxtemplater(zip, {
+    paragraphLoop: true,
+    linebreaks: true,
+    delimiters: { start: '{{', end: '}}' }
+  });
+
+  const templateData = {
+    name: data?.name || 'Participant',
+    quiz_title: data?.quiz_title || 'Evaluation',
+    score: String(data?.score ?? '0'),
+    total: String(data?.total ?? '0'),
+    percent: String(data?.percent ?? '0%'),
+    date: data?.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+    email: data?.email || '',
+    org: data?.org || ''
+  };
+
+  doc.render(templateData);
+  const modifiedBuffer = doc.getZip().generate({ type: 'nodebuffer' });
+
+  // Write modified PPTX to tmp
+  const tmpPptx = path.join(TMP_DIR, `cert_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pptx`);
+  fs.writeFileSync(tmpPptx, modifiedBuffer);
+
+  // Try LibreOffice conversion to PDF
+  try {
+    execSync(`libreoffice --headless --convert-to pdf --outdir "${TMP_DIR}" "${tmpPptx}"`, {
+      timeout: 30000,
+      stdio: 'pipe'
+    });
+    const pdfPath = tmpPptx.replace('.pptx', '.pdf');
+
+    if (fs.existsSync(pdfPath)) {
+      const pdfBuffer = fs.readFileSync(pdfPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Certificate_${(data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '')}.pdf"`);
+      res.send(pdfBuffer);
+
+      // Cleanup tmp files
+      try { fs.unlinkSync(tmpPptx); } catch {}
+      try { fs.unlinkSync(pdfPath); } catch {}
+      return;
+    }
+  } catch (convErr) {
+    console.warn('LibreOffice conversion failed (falling back to PPTX):', convErr.message);
+  }
+
+  // Fallback: return modified PPTX if LibreOffice not installed
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+  res.setHeader('Content-Disposition', `attachment; filename="Certificate_${(data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '')}.pptx"`);
+  res.send(modifiedBuffer);
+
+  // Cleanup tmp
+  try { fs.unlinkSync(tmpPptx); } catch {}
 }));
 
 app.get('/api/tables', asyncHandler(async (req, res) => {

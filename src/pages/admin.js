@@ -214,10 +214,17 @@ export async function renderAdminPanel(app) {
 
           ${templates.length > 0 ? `
             <div class="grid grid-3">
-              ${templates.map(t => `
+              ${templates.map(t => {
+                const isPptx = t.type === 'pptx';
+                return `
                 <div class="clay-card" style="display:flex; flex-direction:column; justify-content:space-between">
                   <div>
-                    ${t.backgroundImage ? `
+                    ${isPptx ? `
+                      <div style="height: 110px; background: linear-gradient(135deg, #fff1f2, #fef3c7); border: 2px solid rgba(234,88,12,0.2); border-radius: var(--radius-sm); margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 0.3rem">
+                        <div style="font-size: 2.5rem">📄</div>
+                        <div style="font-size: 0.78rem; font-weight: 800; color: #ea580c">PPTX Template</div>
+                      </div>
+                    ` : t.backgroundImage ? `
                       <div style="height: 140px; border-radius: var(--radius-sm); margin-bottom: 1rem; overflow:hidden; background: #f1f5f9">
                         <img class="tmpl-preview-img" data-tmplid="${t.id}" style="width:100%; height:100%; object-fit:cover" alt="Certificate Preview">
                       </div>
@@ -228,7 +235,7 @@ export async function renderAdminPanel(app) {
                     `}
                     <h4 style="font-size: 1.1rem; font-weight: 800">${escapeHtml(t.name || 'Untitled Template')}</h4>
                     <p style="font-size: 0.8rem; color: var(--text-sub); margin-top: 0.2rem">
-                      ${t.backgroundImage ? '📄 Custom Design Uploaded' : `${t.elements?.length || 0} Elements`}
+                      ${isPptx ? '📄 PowerPoint Template — Auto Placeholder Replacement' : t.backgroundImage ? '🖼️ Image + Text Overlay Template' : `${t.elements?.length || 0} Text Elements`}
                     </p>
                   </div>
                   <div style="margin-top: 1.25rem; display: flex; gap: 0.5rem">
@@ -236,7 +243,7 @@ export async function renderAdminPanel(app) {
                     <button class="btn btn-danger btn-sm del-t" data-id="${t.id}">🗑️</button>
                   </div>
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
           ` : `
             <div class="clay-card" style="text-align:center; padding: 2.5rem">

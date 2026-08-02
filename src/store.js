@@ -64,6 +64,39 @@ export async function deleteCertTemplate(id) {
   return apiRequest(`/api/cert-templates/${id}`, { method: 'DELETE' });
 }
 
+// PPTX Certificate Upload
+export async function uploadPptxTemplate(file, name, id) {
+  const formData = new FormData();
+  formData.append('pptx', file);
+  formData.append('name', name || 'Untitled PPTX Template');
+  if (id) formData.append('id', id);
+  const response = await fetch(`${SERVER_BASE}/api/cert-templates/upload-pptx`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!response.ok) {
+    let message = response.statusText;
+    try { const body = await response.json(); message = body.error || message; } catch {}
+    throw new Error(message);
+  }
+  return response.json();
+}
+
+// Generate certificate PDF from PPTX template (server-side rendering)
+export async function generateCertificatePdf(templateId, data) {
+  const response = await fetch(`${SERVER_BASE}/api/generate-certificate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ templateId, data })
+  });
+  if (!response.ok) {
+    let message = response.statusText;
+    try { const body = await response.json(); message = body.error || message; } catch {}
+    throw new Error(message);
+  }
+  return response; // Return raw response for blob download
+}
+
 // Admin Config
 export async function getAdminConfigAsync() {
   return apiRequest('/api/admin-config');
