@@ -124,6 +124,16 @@ export async function renderAdminPanel(app) {
       getAllQuizzes(),
       getAllCertTemplates()
     ]);
+    if (!cfg) cfg = {};
+    if (!Array.isArray(cfg.adminEmails)) {
+      if (typeof cfg.adminEmails === 'string') {
+        try { cfg.adminEmails = JSON.parse(cfg.adminEmails); } catch { cfg.adminEmails = []; }
+      } else {
+        cfg.adminEmails = [];
+      }
+    }
+    if (!Array.isArray(quizzes)) quizzes = [];
+    if (!Array.isArray(templates)) templates = [];
   } catch (err) {
     console.error('Admin panel load error:', err);
     app.innerHTML = `
@@ -260,7 +270,7 @@ export async function renderAdminPanel(app) {
               
               <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem">👥 Authorized Admin Emails</h3>
               <div id="admin-emails-list" style="margin-bottom: 0.75rem">
-                ${(cfg.adminEmails || []).map((e, idx) => `
+                ${(Array.isArray(cfg.adminEmails) ? cfg.adminEmails : []).map((e, idx) => `
                   <div style="display:flex; justify-content:space-between; align-items:center; padding: 0.35rem 0.75rem; background: #fff; border-radius: var(--radius-sm); margin-bottom: 0.4rem; font-size: 0.85rem">
                     <span>${escapeHtml(e)}</span>
                     <button class="btn btn-danger btn-sm remove-email" data-idx="${idx}" style="padding: 0.2rem 0.5rem; font-size: 0.7rem">✕</button>

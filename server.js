@@ -256,12 +256,23 @@ app.get('/api/health', asyncHandler(async (req, res) => {
   res.json({ ok: true, database: 'postgres' });
 }));
 
+function ensureArray(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  return [];
+}
+
 app.get('/api/admin-config', asyncHandler(async (req, res) => {
   const row = await getAdminConfigRow();
   if (!row) return res.json({ isSetup: false });
   res.json({
     id: row.id,
-    adminEmails: row.admin_emails || [],
+    adminEmails: ensureArray(row.admin_emails),
     googleClientId: row.google_client_id || '',
     isSetup: row.is_setup
   });
@@ -270,13 +281,14 @@ app.get('/api/admin-config', asyncHandler(async (req, res) => {
 app.post('/api/admin-config', asyncHandler(async (req, res) => {
   const body = req.body || {};
   const existing = await getAdminConfigRow();
+  const adminEmails = JSON.stringify(ensureArray(body.adminEmails || (existing?.admin_emails)));
 
   if (!existing) {
     if (!body.id || !body.passwordHash) return res.status(400).json({ error: 'id and passwordHash required' });
     await pool.query(
       `INSERT INTO admin_config (id, password_hash, admin_emails, google_client_id, is_setup, updated_at)
        VALUES ($1, $2, $3, $4, true, now())`,
-      [body.id, body.passwordHash, body.adminEmails || [], body.googleClientId || '']
+      [body.id, body.passwordHash, adminEmails, body.googleClientId || '']
     );
     return res.json({ ok: true });
   }
@@ -291,7 +303,7 @@ app.post('/api/admin-config', asyncHandler(async (req, res) => {
     [
       body.id || existing.id,
       body.passwordHash || existing.password_hash,
-      body.adminEmails || existing.admin_emails || [],
+      adminEmails,
       body.googleClientId || existing.google_client_id || '',
       existing.id
     ]
