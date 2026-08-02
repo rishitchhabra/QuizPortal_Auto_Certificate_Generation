@@ -516,27 +516,33 @@ app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
   const tmpPptx = path.join(TMP_DIR, `cert_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pptx`);
   fs.writeFileSync(tmpPptx, modifiedBuffer);
 
-  // Try LibreOffice conversion to PDF
-  try {
-    execSync(`libreoffice --headless --convert-to pdf --outdir "${TMP_DIR}" "${tmpPptx}"`, {
-      timeout: 30000,
-      stdio: 'pipe'
-    });
-    const pdfPath = tmpPptx.replace('.pptx', '.pdf');
+  // Try LibreOffice / soffice conversion to PDF across Linux / macOS
+  const cmds = [
+    'libreoffice',
+    'soffice',
+    '/Applications/LibreOffice.app/Contents/MacOS/soffice'
+  ];
 
-    if (fs.existsSync(pdfPath)) {
-      const pdfBuffer = fs.readFileSync(pdfPath);
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="Certificate_${(data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '')}.pdf"`);
-      res.send(pdfBuffer);
+  for (const cmd of cmds) {
+    try {
+      execSync(`"${cmd}" --headless --convert-to pdf --outdir "${TMP_DIR}" "${tmpPptx}"`, {
+        timeout: 30000,
+        stdio: 'pipe'
+      });
+      const pdfPath = tmpPptx.replace('.pptx', '.pdf');
 
-      // Cleanup tmp files
-      try { fs.unlinkSync(tmpPptx); } catch {}
-      try { fs.unlinkSync(pdfPath); } catch {}
-      return;
-    }
-  } catch (convErr) {
-    console.warn('LibreOffice conversion failed (falling back to PPTX):', convErr.message);
+      if (fs.existsSync(pdfPath)) {
+        const pdfBuffer = fs.readFileSync(pdfPath);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="Certificate_${(data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '')}.pdf"`);
+        res.send(pdfBuffer);
+
+        // Cleanup tmp files
+        try { fs.unlinkSync(tmpPptx); } catch {}
+        try { fs.unlinkSync(pdfPath); } catch {}
+        return;
+      }
+    } catch {}
   }
 
   // Fallback: return modified PPTX if LibreOffice not installed

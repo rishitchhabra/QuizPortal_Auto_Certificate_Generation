@@ -483,13 +483,17 @@ function renderResults(submission) {
 
         <!-- 2. CERTIFICATE -->
         ${showCert ? (isPptx ? `
-          <!-- PPTX Certificate: Server-rendered download -->
-          <div class="clay-card" style="margin-top: 1.5rem; text-align: center; padding: 2.5rem">
-            <div style="font-size: 4rem; margin-bottom: 0.75rem">🎓</div>
-            <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 0.5rem">Your Official Certificate is Ready!</h3>
-            <p style="color: var(--text-sub); font-size: 0.9rem; margin-bottom: 1.5rem">
-              Your personalized certificate has been generated with your name, score, and completion details.
-            </p>
+          <!-- PPTX Certificate Preview & Download -->
+          <div class="clay-card" style="margin-top: 1.5rem; text-align: center; padding: 2rem">
+            <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem">🎓 Your Official Certificate</h3>
+            
+            <!-- Live Preview Container Above Download Button -->
+            <div id="pptx-cert-preview-container" style="margin-bottom: 1.25rem; min-height: 220px; display: flex; align-items: center; justify-content: center; background: var(--bg-input); border-radius: var(--radius-md); padding: 1rem; box-shadow: var(--clay-shadow-input)">
+              <div style="font-size: 0.95rem; color: var(--text-sub); font-weight: 600">
+                ⏳ Rendering your personalized certificate...
+              </div>
+            </div>
+
             <button class="btn btn-primary btn-lg" id="btn-download-pptx-cert" style="font-size: 1.05rem; padding: 0.85rem 2.5rem">
               📥 Download Certificate (PDF)
             </button>
@@ -550,8 +554,8 @@ function renderResults(submission) {
     // Bind certificate actions
     if (showCert && certTemplate) {
       if (isPptx) {
-        // PPTX: server-side generation
-        app.querySelector('#btn-download-pptx-cert')?.addEventListener('click', () => downloadPptxCert(certTemplate, submission));
+        // PPTX: server-side generation + live preview
+        loadAndShowPptxCertPreview(certTemplate, submission);
       } else {
         // Image: canvas rendering
         renderCertificate(certTemplate, submission);
@@ -646,9 +650,12 @@ async function downloadCertPDF() {
   }
 }
 
-async function downloadPptxCert(certTemplate, submission) {
+let cachedCertBlob = null;
+let cachedCertFilename = null;
+
+async function loadAndShowPptxCertPreview(certTemplate, submission) {
+  const container = document.getElementById('pptx-cert-preview-container');
   const btn = document.getElementById('btn-download-pptx-cert');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating Certificate...'; }
 
   try {
     const pName = submission.participant?.name || participant.name || 'Participant';
@@ -665,27 +672,56 @@ async function downloadPptxCert(certTemplate, submission) {
       org: submission.participant?.org || participant.org || ''
     });
 
-    const blob = await response.blob();
+    cachedCertBlob = await response.blob();
     const contentType = response.headers.get('Content-Type') || '';
     const ext = contentType.includes('pdf') ? 'pdf' : 'pptx';
-    const filename = `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
+    cachedCertFilename = `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
 
-    // Trigger browser download
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const blobUrl = URL.createObjectURL(cachedCertBlob);
 
-    showToast(`Certificate downloaded as ${ext.toUpperCase()}! 🎓`);
-  } catch (e) {
-    console.error('PPTX cert download error:', e);
-    showToast('Certificate download failed: ' + (e.message || 'Server error'), 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📥 Download Certificate (PDF)'; }
+    if (container) {
+      if (ext === 'pdf') {
+        container.innerHTML = `
+          <div style="width:100%; max-width:900px; display:flex; flex-direction:column; align-items:center">
+            <iframe src="${blobUrl}#toolbar=0&navpanes=0&scrollbar=0" style="width:100%; height:550px; border:none; border-radius: var(--radius-md); box-shadow: 0 8px 25px rgba(0,0,0,0.12); background:#fff"></iframe>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div style="padding:2rem; text-align:center">
+            <div style="font-size:3.5rem; margin-bottom:0.5rem">🎓</div>
+            <div style="font-weight:800; font-size:1.15rem; color:var(--clay-primary)">Your Personalized Certificate is Ready!</div>
+            <div style="font-size:0.85rem; color:var(--text-sub); margin-top:0.3rem">Generated with your name, score (${submission.percent}%), and completion details.</div>
+          </div>
+        `;
+      }
+    }
+
+    if (btn) {
+      btn.textContent = ext === 'pdf' ? '📥 Download PDF Certificate' : '📥 Download PPTX Certificate';
+      btn.onclick = () => {
+        if (cachedCertBlob && cachedCertFilename) {
+          const url = URL.createObjectURL(cachedCertBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = cachedCertFilename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showToast(`Certificate downloaded! 🎓`);
+        }
+      };
+    }
+
+  } catch (err) {
+    console.error('PPTX preview error:', err);
+    if (container) {
+      container.innerHTML = `
+        <div style="color: var(--clay-danger); font-size: 0.9rem; padding: 1rem">
+          ⚠️ Could not load live preview. Click download button below to get your certificate.
+        </div>
+      `;
+    }
   }
 }
 
