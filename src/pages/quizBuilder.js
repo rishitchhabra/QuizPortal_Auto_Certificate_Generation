@@ -20,7 +20,8 @@ export async function renderQuizBuilder(app, params) {
       passingPercent: 50,
       deadline: '', // Last date/time to start quiz
       shuffleQuestions: false,
-      showResults: true,
+      showSummary: true,
+      showCorrectAnswers: true,
       isPublished: true, // Default to Live
       certificateTemplateId: '',
       collectName: true,
@@ -122,8 +123,12 @@ async function renderPage(app) {
                   Shuffle question order per student
                 </label>
                 <label style="display:flex; align-items:center; gap: 0.5rem; font-size: 0.85rem; cursor:pointer">
-                  <input type="checkbox" id="quiz-show-results" ${currentQuiz.showResults ? 'checked' : ''}>
-                  Show correct answers & feedback after submission
+                  <input type="checkbox" id="quiz-show-summary" ${currentQuiz.showSummary !== false ? 'checked' : ''}>
+                  Show quiz summary (score, time, result) after submission
+                </label>
+                <label style="display:flex; align-items:center; gap: 0.5rem; font-size: 0.85rem; cursor:pointer">
+                  <input type="checkbox" id="quiz-show-answers" ${currentQuiz.showCorrectAnswers !== false ? 'checked' : ''}>
+                  Show correct answers & question review after submission
                 </label>
               </div>
             </div>
@@ -282,7 +287,8 @@ function sync(app) {
   currentQuiz.passingPercent = parseInt(app.querySelector('#quiz-passing')?.value) || 50;
   currentQuiz.deadline = app.querySelector('#quiz-deadline')?.value || '';
   currentQuiz.shuffleQuestions = app.querySelector('#quiz-shuffle')?.checked || false;
-  currentQuiz.showResults = app.querySelector('#quiz-show-results')?.checked ?? true;
+  currentQuiz.showSummary = app.querySelector('#quiz-show-summary')?.checked ?? true;
+  currentQuiz.showCorrectAnswers = app.querySelector('#quiz-show-answers')?.checked ?? true;
   currentQuiz.limitPerUser = app.querySelector('#quiz-limit-user')?.checked ?? true;
   currentQuiz.certificateTemplateId = app.querySelector('#quiz-cert-template')?.value || '';
   currentQuiz.collectPhone = app.querySelector('#quiz-collect-phone')?.checked || false;

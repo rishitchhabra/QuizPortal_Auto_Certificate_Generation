@@ -174,7 +174,7 @@ export async function renderAdminPanel(app) {
         <!-- Quick Actions Bar -->
         <div style="display: flex; gap: 1rem; margin-bottom: 2.5rem; flex-wrap: wrap">
           <a href="#/create" class="btn btn-primary btn-lg">+ Create New Quiz</a>
-          <a href="#/certificates/new" class="btn btn-success btn-lg">🎨 Design Certificate</a>
+          <a href="#/certificates/new" class="btn btn-success btn-lg">📤 Upload Certificate Template</a>
         </div>
 
         <!-- Quizzes & Live Controls -->
@@ -204,9 +204,12 @@ export async function renderAdminPanel(app) {
         <div style="margin-bottom: 3.5rem">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.25rem">
             <h2 style="font-size: 1.4rem; font-weight: 800; display:flex; align-items:center; gap: 0.5rem">
-              🎨 Certificate Templates
+              🎓 Certificate Templates
             </h2>
-            <span class="badge badge-clay">${templates.length} Templates</span>
+            <div style="display:flex; gap: 0.5rem; align-items:center">
+              <span class="badge badge-clay">${templates.length} Templates</span>
+              <a href="#/certificates/new" class="btn btn-success btn-sm">+ Upload New Template</a>
+            </div>
           </div>
 
           ${templates.length > 0 ? `
@@ -214,11 +217,19 @@ export async function renderAdminPanel(app) {
               ${templates.map(t => `
                 <div class="clay-card" style="display:flex; flex-direction:column; justify-content:space-between">
                   <div>
-                    <div style="height: 110px; background: ${t.backgroundColor || '#fffdf7'}; border: 3px ${t.borderStyle || 'double'} ${t.borderColor || '#c8a96e'}; border-radius: var(--radius-sm); margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; color: #c8a96e; font-weight: 700; font-size: 0.95rem">
-                      CERTIFICATE PREVIEW
-                    </div>
-                    <h4 style="font-size: 1.1rem; font-weight: 800">${escapeHtml(t.name)}</h4>
-                    <p style="font-size: 0.8rem; color: var(--text-sub); margin-top: 0.2rem">${t.elements?.length || 0} Dynamic Elements</p>
+                    ${t.backgroundImage ? `
+                      <div style="height: 140px; border-radius: var(--radius-sm); margin-bottom: 1rem; overflow:hidden; background: #f1f5f9">
+                        <img src="${t.backgroundImage}" style="width:100%; height:100%; object-fit:cover" alt="Certificate Preview">
+                      </div>
+                    ` : `
+                      <div style="height: 110px; background: #fffdf7; border: 3px double #c8a96e; border-radius: var(--radius-sm); margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; color: #c8a96e; font-weight: 700; font-size: 0.95rem">
+                        CERTIFICATE PREVIEW
+                      </div>
+                    `}
+                    <h4 style="font-size: 1.1rem; font-weight: 800">${escapeHtml(t.name || 'Untitled Template')}</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-sub); margin-top: 0.2rem">
+                      ${t.backgroundImage ? '📄 Custom Design Uploaded' : `${t.elements?.length || 0} Elements`}
+                    </p>
                   </div>
                   <div style="margin-top: 1.25rem; display: flex; gap: 0.5rem">
                     <a href="#/certificates/${t.id}" class="btn btn-secondary btn-sm" style="flex:1">✏️ Edit</a>
@@ -229,10 +240,10 @@ export async function renderAdminPanel(app) {
             </div>
           ` : `
             <div class="clay-card" style="text-align:center; padding: 2.5rem">
-              <div style="font-size: 2.5rem; margin-bottom: 0.5rem">🎨</div>
+              <div style="font-size: 2.5rem; margin-bottom: 0.5rem">🎓</div>
               <h3>No Certificate Templates</h3>
-              <p style="color: var(--text-sub); margin: 0.5rem 0 1.25rem">Create custom certificate templates with dynamic school logos & signatures.</p>
-              <a href="#/certificates/new" class="btn btn-success btn-sm">+ Create Template</a>
+              <p style="color: var(--text-sub); margin: 0.5rem 0 1.25rem">Upload custom certificate designs with your school logo & branding.</p>
+              <a href="#/certificates/new" class="btn btn-success btn-sm">+ Upload First Template</a>
             </div>
           `}
         </div>

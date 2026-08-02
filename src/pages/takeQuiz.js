@@ -232,6 +232,7 @@ async function renderParticipantForm(app) {
 
     participant.custom = {};
     let reqMissing = false;
+    let customNameValue = '';
     app.querySelectorAll('.custom-field-val').forEach(el => {
       const cfi = parseInt(el.dataset.cfi);
       const cf = quiz.customFields?.[cfi];
@@ -240,10 +241,20 @@ async function renderParticipantForm(app) {
         showToast(`Please fill in ${cf.label}`, 'error');
         reqMissing = true;
       }
-      if (val) participant.custom[cf?.label || `Field_${cfi}`] = val;
+      const label = cf?.label || `Field_${cfi}`;
+      if (val) participant.custom[label] = val;
+      // If any custom field is labeled "Name" (case-insensitive), use its value as participant name
+      if (label.toLowerCase() === 'name' && val) {
+        customNameValue = val;
+      }
     });
 
     if (reqMissing) return;
+
+    // Override participant name with the custom "Name" field if provided
+    if (customNameValue) {
+      participant.name = customNameValue;
+    }
 
     quizStarted = true;
     timeLeft = (quiz.timerMinutes || 30) * 60;
@@ -443,42 +454,57 @@ function renderResults(submission) {
   (async () => {
     const certTemplate = quiz.certificateTemplateId ? await getCertTemplate(quiz.certificateTemplateId) : null;
     const showCert = submission.passed && certTemplate;
+    const showSummary = quiz.showSummary !== false;
+    const showAnswers = quiz.showCorrectAnswers !== false;
 
     app.innerHTML = `${renderNavbar()}
     <div class="page fade-in">
       <div class="container-sm">
         
-        <div class="clay-card" style="text-align:center; padding: 3rem 2rem">
-          <div style="font-size: 4.5rem; margin-bottom: 0.5rem">${submission.passed ? '🎉' : '😔'}</div>
-          <div style="font-size: 3rem; font-weight: 900; color: ${submission.passed ? 'var(--clay-success)' : 'var(--clay-danger)'}">${submission.percent}%</div>
-          <h2 style="margin-top: 0.25rem; font-size: 1.6rem; font-weight: 800">${submission.passed ? 'Passed Evaluation!' : 'Evaluation Complete'}</h2>
-          <p style="color: var(--text-sub); margin-top: 0.4rem">${submission.passed ? 'Great job! You have met the passing threshold.' : `You needed at least ${quiz.passingPercent}% to pass.`}</p>
-          
-          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 2rem">
-            <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
-              <div style="font-size: 1.3rem; font-weight: 800; color: var(--clay-success)">${submission.score}</div>
-              <div style="font-size: 0.75rem; color: var(--text-sub)">Your Points</div>
-            </div>
-            <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
-              <div style="font-size: 1.3rem; font-weight: 800">${submission.totalPoints}</div>
-              <div style="font-size: 0.75rem; color: var(--text-sub)">Total Points</div>
-            </div>
-            <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
-              <div style="font-size: 1.3rem; font-weight: 800">${formatTime(submission.timeTaken)}</div>
-              <div style="font-size: 0.75rem; color: var(--text-sub)">Time Taken</div>
+        <!-- 1. QUIZ SUMMARY (if enabled) -->
+        ${showSummary ? `
+          <div class="clay-card" style="text-align:center; padding: 3rem 2rem">
+            <div style="font-size: 4.5rem; margin-bottom: 0.5rem">${submission.passed ? '🎉' : '😔'}</div>
+            <div style="font-size: 3rem; font-weight: 900; color: ${submission.passed ? 'var(--clay-success)' : 'var(--clay-danger)'}">${submission.percent}%</div>
+            <h2 style="margin-top: 0.25rem; font-size: 1.6rem; font-weight: 800">${submission.passed ? 'Passed Evaluation!' : 'Evaluation Complete'}</h2>
+            <p style="color: var(--text-sub); margin-top: 0.4rem">${submission.passed ? 'Great job! You have met the passing threshold.' : `You needed at least ${quiz.passingPercent}% to pass.`}</p>
+            
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 2rem">
+              <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
+                <div style="font-size: 1.3rem; font-weight: 800; color: var(--clay-success)">${submission.score}</div>
+                <div style="font-size: 0.75rem; color: var(--text-sub)">Your Points</div>
+              </div>
+              <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
+                <div style="font-size: 1.3rem; font-weight: 800">${submission.totalPoints}</div>
+                <div style="font-size: 0.75rem; color: var(--text-sub)">Total Points</div>
+              </div>
+              <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
+                <div style="font-size: 1.3rem; font-weight: 800">${formatTime(submission.timeTaken)}</div>
+                <div style="font-size: 0.75rem; color: var(--text-sub)">Time Taken</div>
+              </div>
             </div>
           </div>
-        </div>
+        ` : `
+          <div class="clay-card" style="text-align:center; padding: 2.5rem">
+            <div style="font-size: 3rem; margin-bottom: 0.5rem">✅</div>
+            <h2 style="font-size: 1.4rem; font-weight: 800">Quiz Submitted Successfully!</h2>
+            <p style="color: var(--text-sub); margin-top: 0.4rem">Your response has been recorded.</p>
+          </div>
+        `}
 
+        <!-- 2. CERTIFICATE (if passed & template mapped) -->
         ${showCert ? `
           <div class="clay-card" style="margin-top: 1.5rem; text-align: center; padding: 2rem">
-            <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem">🎓 Verified Official Certificate</h3>
-            <div class="cert-canvas-wrapper" style="margin-bottom: 1.25rem"><div id="cert-render" class="cert-canvas"></div></div>
+            <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1rem">🎓 Your Official Certificate</h3>
+            <div id="cert-render-wrapper" style="margin-bottom: 1.25rem">
+              <div id="cert-render" style="display:inline-block; position:relative"></div>
+            </div>
             <button class="btn btn-primary btn-lg" id="btn-download-cert">📥 Download PDF Certificate</button>
           </div>
         ` : ''}
 
-        ${(quiz.showResults !== false && submission.questionResults) ? `
+        <!-- 3. CORRECT ANSWERS REVIEW (if enabled, after certificate) -->
+        ${(showAnswers && submission.questionResults) ? `
           <div class="clay-card" style="margin-top: 1.5rem; padding: 2rem">
             <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1.25rem">📝 Detailed Question Review & Correct Answers</h3>
             <div style="display:flex; flex-direction:column; gap: 1rem">
@@ -488,14 +514,14 @@ function renderResults(submission) {
                 const correctOptLabel = qr.type === 'tf' ? (qr.correctAnswer === 'true' ? 'True' : 'False') : (qr.options?.[parseInt(qr.correctAnswer)] || qr.correctAnswer);
                 return `
                   <div style="padding: 1.1rem 1.25rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input); border-left: 5px solid ${isCorrect ? 'var(--clay-success)' : 'var(--clay-danger)'}">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.6rem">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.6rem; flex-wrap: wrap; gap: 0.5rem">
                       <span style="font-weight:800; font-size: 0.95rem">Q${qi + 1}. ${escapeHtml(qr.question)}</span>
                       <span class="badge ${isCorrect ? 'badge-success' : 'badge-danger'}" style="font-size: 0.8rem">
                         ${isCorrect ? '✓ Correct (+' + qr.points + ' pts)' : '✗ Incorrect (0/' + qr.points + ' pts)'}
                       </span>
                     </div>
                     <div style="font-size: 0.85rem; margin-bottom: 0.3rem">
-                      <strong>Your Selected Answer:</strong> <span style="color:${isCorrect ? 'var(--clay-success)' : 'var(--clay-danger)'}; font-weight:700">${escapeHtml(userOptLabel)}</span>
+                      <strong>Your Answer:</strong> <span style="color:${isCorrect ? 'var(--clay-success)' : 'var(--clay-danger)'}; font-weight:700">${escapeHtml(userOptLabel)}</span>
                     </div>
                     ${!isCorrect ? `
                       <div style="font-size: 0.85rem; color: var(--clay-success); font-weight:700">
@@ -526,7 +552,15 @@ function renderResults(submission) {
 function renderCertificate(template, submission) {
   const el = document.getElementById('cert-render');
   if (!el) return;
-  el.style.cssText = `width:900px;min-height:636px;position:relative;background:${template.backgroundColor || '#fffdf7'};border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'};padding:40px;font-family:'Playfair Display',serif;`;
+  
+  // New upload-based template: the uploaded image IS the certificate (placeholders baked in design)
+  if (template.backgroundImage && (!template.elements || template.elements.length === 0)) {
+    el.innerHTML = `<img src="${template.backgroundImage}" style="max-width:900px; width:100%; display:block; border-radius: 4px; box-shadow: 0 8px 25px rgba(0,0,0,0.12)" alt="Certificate">`;
+    return;
+  }
+
+  // Legacy canvas-based template with elements overlay
+  el.style.cssText = `width:900px;min-height:636px;position:relative;background:${template.backgroundColor || '#fffdf7'};border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'};font-family:'Playfair Display',serif;`;
   
   const bgHtml = template.backgroundImage ? `<img src="${template.backgroundImage}" style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none">` : '';
 
@@ -558,10 +592,20 @@ async function downloadCertPDF() {
     const { default: html2canvas } = await import('html2canvas-pro');
     const { jsPDF } = await import('jspdf');
     const certEl = document.getElementById('cert-render');
+    const img = certEl.querySelector('img');
+    
+    // Determine dimensions from the rendered image or default
+    const w = img?.naturalWidth || 900;
+    const h = img?.naturalHeight || 636;
+    const aspectRatio = w / h;
+    const pdfW = 900;
+    const pdfH = Math.round(pdfW / aspectRatio);
+    
     const canvas = await html2canvas(certEl, { scale: 2, useCORS: true, backgroundColor: null });
     const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [900, 636] });
-    pdf.addImage(imgData, 'PNG', 0, 0, 900, 636);
+    const orientation = pdfW >= pdfH ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({ orientation, unit: 'px', format: [pdfW, pdfH] });
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
     pdf.save(`Certificate_${participant.name || 'participant'}.pdf`);
     showToast('Certificate downloaded in PDF format! 🎓');
   } catch (e) {

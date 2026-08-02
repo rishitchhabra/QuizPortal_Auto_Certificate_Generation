@@ -234,7 +234,7 @@ async function upsertCertTemplate(template) {
        name = EXCLUDED.name,
        data = EXCLUDED.data,
        updated_at = now()`,
-    [payload.id, payload.name || '', payload]
+    [payload.id, payload.name || '', JSON.stringify(payload)]
   );
   return payload;
 }
