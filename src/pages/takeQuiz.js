@@ -262,11 +262,16 @@ function renderContinuousQuizShell(app) {
     <div class="page fade-in">
       <div class="container-sm">
         
+        <!-- Quiz Title & Description Header -->
+        <div class="clay-card" style="margin-bottom: 1.5rem; text-align: center; padding: 1.75rem 1.5rem">
+          <h1 style="font-size: 1.6rem; font-weight: 900; margin-bottom: 0.3rem">${escapeHtml(quiz.title)}</h1>
+          ${quiz.description ? `<p style="color: var(--text-sub); font-size: 0.9rem; margin-bottom: 0">${escapeHtml(quiz.description)}</p>` : ''}
+        </div>
+
         <!-- Sticky Header Bar (Progress & Timer) -->
-        <div style="position: sticky; top: 70px; z-index: 90; background: rgba(255,255,255,0.94); backdrop-filter: blur(14px); border-radius: var(--radius-md); padding: 0.9rem 1.5rem; box-shadow: var(--clay-shadow-card); margin-bottom: 2rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 0.75rem">
+        <div style="position: sticky; top: 70px; z-index: 90; background: rgba(255,255,255,0.95); backdrop-filter: blur(14px); border-radius: var(--radius-md); padding: 0.9rem 1.5rem; box-shadow: var(--clay-shadow-card); margin-bottom: 2rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 0.75rem">
           <div>
-            <div style="font-weight: 900; font-size: 1.05rem; color: var(--text-main); font-variant-numeric: tabular-nums" id="answered-count">0 of ${total} answered</div>
-            <div style="font-size: 0.75rem; color: var(--text-sub)">Continuous Scroll Evaluation</div>
+            <div style="font-weight: 900; font-size: 1.1rem; color: var(--text-main); font-variant-numeric: tabular-nums" id="answered-count">0 of ${total} answered</div>
           </div>
           
           <div id="timer" class="timer-display">⏱️ ${formatTime(timeLeft)}</div>

@@ -200,14 +200,14 @@ async function insertSubmission(submission) {
     [
       payload.id,
       payload.quizId,
-      payload.participant || {},
-      payload.answers || {},
+      JSON.stringify(payload.participant || {}),
+      JSON.stringify(payload.answers || {}),
       payload.score || 0,
       payload.totalPoints || 0,
       payload.percent || 0,
       !!payload.passed,
       payload.timeTaken || 0,
-      payload.questionResults || [],
+      JSON.stringify(payload.questionResults || []),
       payload.submittedAt || null
     ]
   );
