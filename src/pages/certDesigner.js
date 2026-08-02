@@ -2,9 +2,7 @@ import { saveCertTemplate, getCertTemplate, deleteCertTemplate, generateId } fro
 import { renderNavbar, showToast, escapeHtml } from '../utils.js';
 import { requireAdmin } from '../auth.js';
 
-let template = null, selectedId = null, isDragging = false, isResizing = false;
-let dragStart = { x: 0, y: 0 }, elStart = { x: 0, y: 0 };
-let resizeStart = { x: 0, y: 0 }, elSizeStart = { w: 100, h: 100, fs: 16 };
+let template = null, selectedId = null;
 
 export async function renderCertDesigner(app, params) {
   if (!requireAdmin()) return;
@@ -13,11 +11,8 @@ export async function renderCertDesigner(app, params) {
   if (id && id !== 'new') {
     template = await getCertTemplate(id);
     if (!template) { window.location.hash = '#/admin'; return; }
-  } else if (id === 'new') {
-    template = defaultTemplate();
   } else {
-    window.location.hash = '#/admin';
-    return;
+    template = defaultTemplate();
   }
   selectedId = null;
   renderDesigner(app);
@@ -26,432 +21,325 @@ export async function renderCertDesigner(app, params) {
 function defaultTemplate() {
   return {
     id: generateId(),
-    name: "Gyan International Excellence Certificate",
+    name: "Gyan Official Certificate Template",
     backgroundColor: '#fffdf7',
     borderColor: '#c8a96e',
     borderStyle: 'double',
     borderWidth: 8,
+    backgroundImage: '', // Custom PDF / PNG background
     elements: [
       { id: generateId(), type: 'image', src: 'logo.png', x: 390, y: 35, width: 120, height: 100 },
-      el('CERTIFICATE OF EXCELLENCE', 150, 145, 34, '#c8a96e', "'Playfair Display',serif", '700', 'center', 600),
-      el('PROUDLY PRESENTED TO', 250, 195, 14, '#8a7a5a', "'Outfit',sans-serif", '600', 'center', 400),
-      el('{{name}}', 150, 245, 40, '#0284c7', "'Great Vibes',cursive", '400', 'center', 600),
-      el('─────────────────────────', 200, 305, 14, '#c8a96e', 'serif', 'normal', 'center', 500),
-      el('for outstanding achievement in', 200, 340, 14, '#666', "'Outfit',sans-serif", '400', 'center', 500),
-      el('{{quiz_title}}', 150, 375, 24, '#1e293b', "'Playfair Display',serif", '700', 'center', 600),
-      el('Final Score: {{score}} / {{total}} ({{percent}})', 200, 430, 16, '#555', "'Outfit',sans-serif", '500', 'center', 500),
-      el('Date: {{date}}', 120, 520, 14, '#888', "'Outfit',sans-serif", '400', 'center', 250),
-      el('________________________\nAuthorized Controller', 530, 505, 13, '#888', "'Outfit',sans-serif", '400', 'center', 250),
+      { id: generateId(), type: 'text', content: 'CERTIFICATE OF EXCELLENCE', x: 150, y: 145, fontSize: 32, color: '#c8a96e', fontFamily: "'Playfair Display',serif", fontWeight: '700', textAlign: 'center', width: 600 },
+      { id: generateId(), type: 'text', content: 'PROUDLY PRESENTED TO', x: 250, y: 195, fontSize: 13, color: '#8a7a5a', fontFamily: "'Outfit',sans-serif", fontWeight: '600', textAlign: 'center', width: 400 },
+      { id: generateId(), type: 'text', content: '{{name}}', x: 150, y: 230, fontSize: 38, color: '#0284c7', fontFamily: "'Great Vibes',cursive", fontWeight: '400', textAlign: 'center', width: 600 },
+      { id: generateId(), type: 'text', content: '─────────────────────────', x: 200, y: 290, fontSize: 14, color: '#c8a96e', fontFamily: 'serif', fontWeight: 'normal', textAlign: 'center', width: 500 },
+      { id: generateId(), type: 'text', content: 'for outstanding achievement in', x: 200, y: 325, fontSize: 14, color: '#666666', fontFamily: "'Outfit',sans-serif", fontWeight: '400', textAlign: 'center', width: 500 },
+      { id: generateId(), type: 'text', content: '{{quiz_title}}', x: 150, y: 360, fontSize: 22, color: '#1e293b', fontFamily: "'Playfair Display',serif", fontWeight: '700', textAlign: 'center', width: 600 },
+      { id: generateId(), type: 'text', content: 'Final Score: {{score}} / {{total}} ({{percent}})', x: 200, y: 415, fontSize: 15, color: '#555555', fontFamily: "'Outfit',sans-serif", fontWeight: '500', textAlign: 'center', width: 500 },
+      { id: generateId(), type: 'text', content: 'Date: {{date}}', x: 100, y: 500, fontSize: 13, color: '#888888', fontFamily: "'Outfit',sans-serif", fontWeight: '400', textAlign: 'center', width: 250 },
+      { id: generateId(), type: 'text', content: '________________________\nAuthorized Controller', x: 550, y: 485, fontSize: 13, color: '#888888', fontFamily: "'Outfit',sans-serif", fontWeight: '400', textAlign: 'center', width: 250 },
     ],
     createdAt: new Date().toISOString()
   };
 }
 
-function el(content, x, y, fontSize, color, fontFamily, fontWeight, textAlign, width, fontStyle = 'normal') {
-  return { id: generateId(), type: 'text', content, x, y, fontSize, color, fontFamily, fontWeight, fontStyle, textAlign, width };
-}
-
 function renderDesigner(app) {
   const sel = selectedId ? template.elements.find(e => e.id === selectedId) : null;
-  const isText = sel && sel.type !== 'image';
 
   app.innerHTML = `
     ${renderNavbar()}
-    <div class="page" style="padding-top: 60px">
+    <div class="page fade-in" style="padding-top: 60px">
       
-      <!-- Top Toolbar -->
-      <div class="designer-toolbar">
-        <div style="display:flex; align-items:center; gap: 0.75rem">
+      <!-- Top Action Bar -->
+      <div style="background: #ffffff; border-bottom: 1px solid rgba(160,195,230,0.3); padding: 0.85rem 1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 1rem; box-shadow: var(--clay-shadow-btn)">
+        <div style="display:flex; align-items:center; gap: 1rem">
           <a href="#/admin" class="btn btn-ghost btn-sm">← Admin Portal</a>
-          <input type="text" id="tmpl-name" value="${escapeHtml(template.name)}" class="toolbar-name-input" placeholder="Template Name" style="font-weight:700">
+          <input type="text" id="tmpl-name" value="${escapeHtml(template.name)}" class="form-input" placeholder="Template Name" style="font-weight:800; font-size:1.1rem; width: 320px">
         </div>
-
-        <div style="display:flex; align-items:center; gap: 0.5rem; flex-wrap:wrap">
-          ${isText ? `
-            <select id="tb-font" class="toolbar-select">${fontOptions(sel.fontFamily)}</select>
-            <input type="number" id="tb-size" value="${sel.fontSize || 16}" min="8" max="120" class="toolbar-num" title="Font Size">
-            <input type="color" id="tb-color" value="${sel.color || '#333333'}" class="toolbar-color" title="Text Color">
-            <button id="tb-bold" class="toolbar-btn ${sel.fontWeight === '700' || sel.fontWeight === 'bold' ? 'active' : ''}"><b>B</b></button>
-            <button id="tb-italic" class="toolbar-btn ${sel.fontStyle === 'italic' ? 'active' : ''}"><i>I</i></button>
-            <button id="tb-left" class="toolbar-btn ${sel.textAlign === 'left' ? 'active' : ''}">◧</button>
-            <button id="tb-center" class="toolbar-btn ${sel.textAlign === 'center' ? 'active' : ''}">◫</button>
-            <button id="tb-right" class="toolbar-btn ${sel.textAlign === 'right' ? 'active' : ''}">◨</button>
-            <button id="tb-dup" class="toolbar-btn" title="Duplicate">📋</button>
-            <button id="tb-del" class="toolbar-btn" title="Delete" style="color:var(--clay-danger)">🗑️</button>
-          ` : sel && sel.type === 'image' ? `
-            <span style="font-size:0.85rem; font-weight:700; color:var(--clay-primary)">📷 Image Element Selected</span>
-            <button id="tb-dup" class="toolbar-btn" title="Duplicate">📋</button>
-            <button id="tb-del" class="toolbar-btn" title="Delete" style="color:var(--clay-danger)">🗑️</button>
-          ` : `
-            <span style="font-size:0.8rem; color:var(--text-sub)">Select element on canvas to format</span>
-          `}
-          
-          <button class="btn btn-secondary btn-sm" id="btn-add-el">+ Add Text Box</button>
-          <button class="btn btn-secondary btn-sm" id="btn-add-img" style="background:#e0f2fe; color:#0284c7">+ Add Image / Logo</button>
-          <button class="btn btn-primary btn-sm" id="btn-save">💾 Save Template</button>
+        
+        <div style="display:flex; gap: 0.5rem">
+          <button class="btn btn-secondary btn-sm" id="btn-add-text">+ Add Text Overlay</button>
+          <button class="btn btn-secondary btn-sm" id="btn-add-img">+ Add Logo Image</button>
+          <button class="btn btn-success btn-sm" id="btn-save">💾 Save Certificate Template</button>
         </div>
       </div>
 
-      <!-- Main Designer 3-Panel Layout -->
-      <div class="designer-layout">
+      <div class="container" style="margin-top: 1.5rem; margin-bottom: 3rem">
         
-        <!-- Left Panel: Canvas Settings & Layers -->
-        <div class="designer-left-panel">
-          <h4 style="font-size:0.8rem; font-weight:800; text-transform:uppercase; color:var(--text-muted); letter-spacing:1px; margin-bottom: 0.75rem">Canvas Settings</h4>
+        <div class="grid grid-2" style="grid-template-columns: 360px 1fr; gap: 1.5rem">
           
-          <div class="form-group" style="margin-bottom: 0.75rem">
-            <label class="form-label" style="font-size:0.75rem">Background Color</label>
-            <input type="color" id="bg-color" value="${template.backgroundColor || '#fffdf7'}" class="toolbar-color" style="width:100%; height:34px">
-          </div>
-          
-          <div class="form-group" style="margin-bottom: 0.75rem">
-            <label class="form-label" style="font-size:0.75rem">Border Style & Color</label>
-            <div style="display:flex; gap: 0.4rem">
-              <input type="color" id="bd-color" value="${template.borderColor || '#c8a96e'}" class="toolbar-color" style="width:34px; height:34px">
-              <select id="bd-style" class="toolbar-select" style="flex:1">${borderOptions(template.borderStyle)}</select>
-            </div>
-          </div>
-
-          <hr style="border:none; border-top:1px solid rgba(160,195,230,0.3); margin: 1.25rem 0">
-
-          <h4 style="font-size:0.8rem; font-weight:800; text-transform:uppercase; color:var(--text-muted); letter-spacing:1px; margin-bottom: 0.75rem">Elements / Layers</h4>
-          <div id="layers-list">
-            ${template.elements.map((e, i) => `
-              <div class="layer-item ${e.id === selectedId ? 'active' : ''}" data-elid="${e.id}">
-                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1">
-                  ${e.type === 'image' ? '📷 [Image/Logo]' : escapeHtml(e.content).substring(0, 20) || 'Empty Text'}
-                </span>
-                <span style="font-size:0.7rem; opacity:0.7">#${i + 1}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
-        <!-- Middle Canvas Area -->
-        <div class="designer-canvas-area" id="canvas-area">
-          <div class="cert-canvas" id="cert-canvas" style="background:${template.backgroundColor}; border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'}">
-            ${template.elements.map(e => {
-              const isSel = e.id === selectedId;
-              const handleHtml = isSel ? `<div class="resize-handle" data-elid="${e.id}" title="Drag to Resize"></div>` : '';
-              if (e.type === 'image') {
-                return `
-                  <div class="cert-el ${isSel ? 'selected' : ''}" data-elid="${e.id}"
-                    style="left:${e.x}px; top:${e.y}px; width:${e.width || 100}px; height:${e.height || 100}px">
-                    <img src="${e.src}" style="width:100%; height:100%; object-fit:contain; pointer-events:none">
-                    ${handleHtml}
-                  </div>`;
-              }
-              return `
-                <div class="cert-el ${isSel ? 'selected' : ''}" data-elid="${e.id}"
-                  style="left:${e.x}px; top:${e.y}px; font-size:${e.fontSize || 16}px; color:${e.color || '#333'}; font-family:${e.fontFamily || "'Playfair Display',serif"}; font-weight:${e.fontWeight || 'normal'}; font-style:${e.fontStyle || 'normal'}; text-align:${e.textAlign || 'center'}; ${e.width ? `width:${e.width}px;` : ''} white-space:pre-wrap; line-height:1.4">
-                  ${e.content}
-                  ${handleHtml}
-                </div>`;
-            }).join('')}
-          </div>
-        </div>
-
-        <!-- Right Panel: Active Element Properties -->
-        <div class="designer-right-panel">
-          ${sel ? `
-            <h4 style="font-size:0.8rem; font-weight:800; text-transform:uppercase; color:var(--text-muted); letter-spacing:1px; margin-bottom: 0.75rem">
-              ${sel.type === 'image' ? '📷 Image Properties' : '✏️ Text Properties'}
-            </h4>
+          <!-- LEFT SIDEBAR: PDF / Background Upload & Placeholders Guide -->
+          <div style="display:flex; flex-direction:column; gap: 1.25rem">
             
-            ${sel.type === 'image' ? `
+            <!-- 1. Background Image / PDF Upload Card -->
+            <div class="clay-card">
+              <h3 style="font-size: 1.05rem; font-weight: 800; margin-bottom: 0.5rem">📄 Upload Background Design (Image / PDF)</h3>
+              <p style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 1rem">
+                Upload your custom certificate graphic (PDF, PNG, JPG). Text placeholders will overlay on top.
+              </p>
+              
               <div class="form-group">
-                <label class="form-label" style="font-size:0.75rem">Image Source URL / Path</label>
-                <input type="text" class="form-input" id="prop-img-src" value="${escapeHtml(sel.src)}" style="font-size:0.8rem">
+                <input type="file" id="bg-upload-file" accept="image/*,application/pdf" class="form-input" style="font-size: 0.8rem">
               </div>
 
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
-                <div class="form-group">
-                  <label class="form-label" style="font-size:0.75rem">Width (px)</label>
-                  <input type="number" class="form-input" id="prop-w" value="${sel.width || 100}">
+              ${template.backgroundImage ? `
+                <div style="margin-top: 0.75rem; text-align: center">
+                  <span class="badge badge-success" style="margin-bottom:0.5rem">Custom Background Uploaded</span>
+                  <button class="btn btn-danger btn-sm" id="btn-remove-bg" style="width:100%">🗑️ Remove Custom Background</button>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" style="font-size:0.75rem">Height (px)</label>
-                  <input type="number" class="form-input" id="prop-h" value="${sel.height || 100}">
-                </div>
-              </div>
-            ` : `
-              <div class="form-group">
-                <label class="form-label" style="font-size:0.75rem">Text Content</label>
-                <textarea class="form-textarea" id="prop-content" rows="3" style="font-size:0.85rem">${escapeHtml(sel.content)}</textarea>
-                <div style="font-size:0.65rem; color:var(--text-muted); margin-top: 0.4rem; line-height:1.4">
-                  Placeholders: <b>{{name}}</b>, <b>{{quiz_title}}</b>, <b>{{score}}</b>, <b>{{total}}</b>, <b>{{percent}}</b>, <b>{{date}}</b>
-                </div>
-              </div>
+              ` : ''}
+            </div>
 
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
-                <div class="form-group">
-                  <label class="form-label" style="font-size:0.75rem">Width (px)</label>
-                  <input type="number" class="form-input" id="prop-w" value="${sel.width || ''}" placeholder="Auto">
+            <!-- 2. Dynamic Placeholders Reference Guide -->
+            <div class="clay-card" style="background: #f8fafc">
+              <h3 style="font-size: 1rem; font-weight: 800; margin-bottom: 0.5rem; color: var(--clay-primary)">
+                📌 Dynamic Text Placeholders
+              </h3>
+              <p style="font-size: 0.75rem; color: var(--text-sub); margin-bottom: 0.75rem">
+                Use these tags inside any text block to dynamically insert student & quiz details:
+              </p>
+              
+              <div style="display:flex; flex-direction:column; gap: 0.4rem; font-size: 0.8rem">
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{name}}</code>
+                  <span>Student Full Name</span>
                 </div>
-                <div class="form-group">
-                  <label class="form-label" style="font-size:0.75rem">Font Size (px)</label>
-                  <input type="number" class="form-input" id="prop-fs" value="${sel.fontSize || 16}">
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{quiz_title}}</code>
+                  <span>Quiz Title</span>
                 </div>
-              </div>
-            `}
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
-              <div class="form-group">
-                <label class="form-label" style="font-size:0.75rem">X Position (px)</label>
-                <input type="number" class="form-input" id="prop-x" value="${sel.x}">
-              </div>
-              <div class="form-group">
-                <label class="form-label" style="font-size:0.75rem">Y Position (px)</label>
-                <input type="number" class="form-input" id="prop-y" value="${sel.y}">
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{score}}</code>
+                  <span>Earned Points</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{total}}</code>
+                  <span>Total Points</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{percent}}</code>
+                  <span>Score Percentage %</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{date}}</code>
+                  <span>Completion Date</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{email}}</code>
+                  <span>Student Google Email</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding: 0.35rem 0.6rem; background:#fff; border-radius:4px">
+                  <code style="color:#0284c7; font-weight:800">{{org}}</code>
+                  <span>Class / School Name</span>
+                </div>
               </div>
             </div>
-          ` : `
-            <div style="text-align:center; padding: 2rem 0; color:var(--text-sub)">
-              <div style="font-size: 2rem; margin-bottom: 0.5rem">👆</div>
-              <p style="font-size: 0.85rem">Click on any text or image on canvas to customize.</p>
+
+            <!-- 3. Layer / Element Manager -->
+            <div class="clay-card">
+              <h3 style="font-size: 1rem; font-weight: 800; margin-bottom: 0.75rem">📝 Certificate Text Blocks</h3>
+              <div style="display:flex; flex-direction:column; gap: 0.4rem; max-height: 280px; overflow-y:auto">
+                ${template.elements.map((e, idx) => `
+                  <div class="layer-item ${e.id === selectedId ? 'active' : ''}" data-elid="${e.id}" style="display:flex; justify-content:space-between; align-items:center; padding: 0.5rem 0.75rem; background: ${e.id === selectedId ? '#e0f2fe' : '#fff'}; border-radius:var(--radius-sm); cursor:pointer">
+                    <span style="font-size:0.8rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width: 220px">
+                      ${e.type === 'image' ? '📷 Logo Image' : escapeHtml(e.content)}
+                    </span>
+                    <button class="btn btn-danger btn-sm del-el" data-elid="${e.id}" style="padding: 0.15rem 0.4rem; font-size:0.7rem">✕</button>
+                  </div>
+                `).join('')}
+              </div>
             </div>
-          `}
+
+          </div>
+
+          <!-- RIGHT PANEL: Live Certificate Preview Canvas & Selected Properties -->
+          <div style="display:flex; flex-direction:column; gap: 1.25rem">
+            
+            <!-- Live Preview Canvas -->
+            <div class="clay-card" style="padding: 1.5rem; text-align: center">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem">
+                <h3 style="font-size: 1.1rem; font-weight: 800">👁️ Live Certificate Preview</h3>
+                <span class="badge badge-clay">Sample Participant Preview</span>
+              </div>
+              
+              <div style="overflow-x:auto; display:flex; justify-content:center; background:#cbd5e1; padding: 1.5rem; border-radius: var(--radius-md)">
+                <div id="cert-canvas" style="width: 800px; height: 565px; position: relative; background:${template.backgroundColor || '#fffdf7'}; border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'}; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align:left">
+                  ${template.backgroundImage ? `<img src="${template.backgroundImage}" style="position:absolute; left:0; top:0; width:100%; height:100%; object-fit:cover; pointer-events:none">` : ''}
+                  
+                  ${template.elements.map(e => {
+                    const isSel = e.id === selectedId;
+                    const previewPlaceholders = {
+                      '{{name}}': 'Rishit Singh Chhabra',
+                      '{{quiz_title}}': 'General Science Evaluation',
+                      '{{score}}': '20',
+                      '{{total}}': '20',
+                      '{{percent}}': '100%',
+                      '{{date}}': 'August 2, 2026',
+                      '{{email}}': 'student@gyan.edu',
+                      '{{org}}': 'Class 10-A'
+                    };
+                    if (e.type === 'image') {
+                      return `
+                        <div class="cert-el ${isSel ? 'selected' : ''}" data-elid="${e.id}"
+                          style="left:${e.x}px; top:${e.y}px; width:${e.width || 100}px; height:${e.height || 100}px">
+                          <img src="${e.src}" style="width:100%; height:100%; object-fit:contain; pointer-events:none">
+                        </div>`;
+                    }
+                    let txt = e.content || '';
+                    for (const [k, v] of Object.entries(previewPlaceholders)) txt = txt.replaceAll(k, v);
+                    return `
+                      <div class="cert-el ${isSel ? 'selected' : ''}" data-elid="${e.id}"
+                        style="left:${e.x}px; top:${e.y}px; font-size:${e.fontSize || 16}px; color:${e.color || '#333'}; font-family:${e.fontFamily || "'Playfair Display',serif"}; font-weight:${e.fontWeight || 'normal'}; font-style:${e.fontStyle || 'normal'}; text-align:${e.textAlign || 'center'}; ${e.width ? `width:${e.width}px;` : ''} white-space:pre-wrap; line-height:1.4">
+                        ${escapeHtml(txt)}
+                      </div>`;
+                  }).join('')}
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Selected Element Property Controls -->
+            ${sel ? `
+              <div class="clay-card">
+                <h3 style="font-size: 1.05rem; font-weight: 800; margin-bottom: 1rem; color: var(--clay-primary)">
+                  ✏️ Edit Selected Overlay: "${sel.type === 'image' ? 'Logo Image' : escapeHtml(sel.content).substring(0, 25)}"
+                </h3>
+                
+                ${sel.type !== 'image' ? `
+                  <div class="form-group">
+                    <label class="form-label">Text Content (Supports Placeholders)</label>
+                    <input type="text" class="form-input" id="prop-content" value="${escapeHtml(sel.content)}">
+                  </div>
+
+                  <div style="display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem">
+                    <div class="form-group" style="margin-bottom:0">
+                      <label class="form-label">Font Family</label>
+                      <select class="form-select" id="prop-font">
+                        <option value="'Playfair Display',serif" ${sel.fontFamily?.includes('Playfair') ? 'selected' : ''}>Playfair Display (Serif)</option>
+                        <option value="'Great Vibes',cursive" ${sel.fontFamily?.includes('Great') ? 'selected' : ''}>Great Vibes (Cursive)</option>
+                        <option value="'Outfit',sans-serif" ${sel.fontFamily?.includes('Outfit') ? 'selected' : ''}>Outfit (Sans-Serif)</option>
+                        <option value="'Inter',sans-serif" ${sel.fontFamily?.includes('Inter') ? 'selected' : ''}>Inter (Modern)</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                      <label class="form-label">Font Size (px)</label>
+                      <input type="number" class="form-input" id="prop-fs" value="${sel.fontSize || 16}">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                      <label class="form-label">Text Color</label>
+                      <input type="color" class="form-input" id="prop-color" value="${sel.color || '#333333'}" style="height:38px; padding:2px">
+                    </div>
+                    <div class="form-group" style="margin-bottom:0">
+                      <label class="form-label">Alignment</label>
+                      <select class="form-select" id="prop-align">
+                        <option value="center" ${sel.textAlign === 'center' ? 'selected' : ''}>Center</option>
+                        <option value="left" ${sel.textAlign === 'left' ? 'selected' : ''}>Left</option>
+                        <option value="right" ${sel.textAlign === 'right' ? 'selected' : ''}>Right</option>
+                      </select>
+                    </div>
+                  </div>
+                ` : ''}
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem">
+                  <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">X Position (px)</label>
+                    <input type="number" class="form-input" id="prop-x" value="${sel.x}">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Y Position (px)</label>
+                    <input type="number" class="form-input" id="prop-y" value="${sel.y}">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Width Box (px)</label>
+                    <input type="number" class="form-input" id="prop-w" value="${sel.width || 500}">
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+
+          </div>
+
         </div>
 
       </div>
     </div>
   `;
 
-  bindDesignerEvents(app);
+  bindEvents(app);
 }
 
-function fontOptions(current) {
-  const fonts = [["'Outfit',sans-serif", "Outfit"], ["'Inter',sans-serif", "Inter"], ["'Playfair Display',serif", "Playfair Display"], ["'Great Vibes',cursive", "Great Vibes"], ["serif", "Serif"], ["monospace", "Monospace"]];
-  return fonts.map(([v, l]) => `<option value="${v}" ${current?.includes(l.split(' ')[0]) ? 'selected' : ''}>${l}</option>`).join('');
-}
+function bindEvents(app) {
+  // Background Upload
+  app.querySelector('#bg-upload-file')?.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      template.backgroundImage = evt.target.result;
+      showToast('Custom background template uploaded! 📄');
+      renderDesigner(app);
+    };
+    reader.readAsDataURL(file);
+  });
 
-function borderOptions(current) {
-  return ['double', 'solid', 'dashed', 'groove', 'ridge', 'none'].map(s => `<option value="${s}" ${current === s ? 'selected' : ''}>${s}</option>`).join('');
-}
+  app.querySelector('#btn-remove-bg')?.addEventListener('click', () => {
+    template.backgroundImage = '';
+    showToast('Custom background removed');
+    renderDesigner(app);
+  });
 
-function bindDesignerEvents(app) {
-  const canvas = document.getElementById('cert-canvas');
-
-  document.querySelectorAll('.cert-el').forEach(domEl => {
-    domEl.addEventListener('mousedown', e => {
-      if (e.target.classList.contains('resize-handle')) return;
+  // Layer click
+  app.querySelectorAll('.layer-item, .cert-el').forEach(el => {
+    el.addEventListener('click', e => {
       e.stopPropagation();
-      selectedId = domEl.dataset.elid;
-      const elData = template.elements.find(x => x.id === selectedId);
-      if (elData) {
-        isDragging = true;
-        dragStart = { x: e.clientX, y: e.clientY };
-        elStart = { x: elData.x, y: elData.y };
-      }
+      selectedId = el.dataset.elid;
       renderDesigner(app);
     });
   });
 
-  document.querySelectorAll('.resize-handle').forEach(handle => {
-    handle.addEventListener('mousedown', e => {
+  // Delete layer
+  app.querySelectorAll('.del-el').forEach(btn => {
+    btn.addEventListener('click', e => {
       e.stopPropagation();
-      e.preventDefault();
-      selectedId = handle.dataset.elid;
-      const elData = template.elements.find(x => x.id === selectedId);
-      if (elData) {
-        isResizing = true;
-        resizeStart = { x: e.clientX, y: e.clientY };
-        elSizeStart = {
-          w: elData.width || (elData.type === 'image' ? 100 : 300),
-          h: elData.height || 100,
-          fs: elData.fontSize || 16
-        };
-      }
+      template.elements = template.elements.filter(x => x.id !== btn.dataset.elid);
+      if (selectedId === btn.dataset.elid) selectedId = null;
+      renderDesigner(app);
     });
   });
 
-  canvas?.addEventListener('mousedown', e => {
-    if (e.target === canvas) { selectedId = null; renderDesigner(app); }
-  });
-
-  const onMove = (e) => {
-    if (!selectedId) return;
-    if (isResizing) {
-      const dx = e.clientX - resizeStart.x;
-      const dy = e.clientY - resizeStart.y;
-      const elData = template.elements.find(x => x.id === selectedId);
-      if (elData) {
-        if (elData.type === 'image') {
-          elData.width = Math.max(20, Math.round(elSizeStart.w + dx));
-          elData.height = Math.max(20, Math.round(elSizeStart.h + dy));
-        } else {
-          elData.width = Math.max(50, Math.round(elSizeStart.w + dx));
-          if (dy !== 0) {
-            elData.fontSize = Math.max(8, Math.round(elSizeStart.fs + Math.round(dy / 4)));
-          }
-        }
-        updateCanvasEl(elData);
-        const pw = document.getElementById('prop-w'), ph = document.getElementById('prop-h'), pfs = document.getElementById('prop-fs');
-        if (pw) pw.value = elData.width;
-        if (ph) ph.value = elData.height || '';
-        if (pfs) pfs.value = elData.fontSize || '';
-      }
-      return;
-    }
-    if (isDragging) {
-      const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
-      const elData = template.elements.find(x => x.id === selectedId);
-      if (elData) {
-        elData.x = Math.max(0, Math.round(elStart.x + dx));
-        elData.y = Math.max(0, Math.round(elStart.y + dy));
-        const domEl = canvas?.querySelector(`[data-elid="${selectedId}"]`);
-        if (domEl) { domEl.style.left = elData.x + 'px'; domEl.style.top = elData.y + 'px'; }
-        const px = document.getElementById('prop-x'), py = document.getElementById('prop-y');
-        if (px) px.value = elData.x; if (py) py.value = elData.y;
-      }
-    }
-  };
-  const onUp = () => { isDragging = false; isResizing = false; };
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-
-  document.querySelectorAll('.layer-item').forEach(item => {
-    item.addEventListener('click', () => { selectedId = item.dataset.elid; renderDesigner(app); });
-  });
-
+  // Property binds
   const sel = selectedId ? template.elements.find(e => e.id === selectedId) : null;
   if (sel) {
-    const bind = (id, prop, tx) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('input', () => { sel[prop] = tx ? tx(el.value) : el.value; updateCanvasEl(sel); });
-      el.addEventListener('change', () => { sel[prop] = tx ? tx(el.value) : el.value; renderDesigner(app); });
-    };
-    if (sel.type === 'image') {
-      bind('prop-img-src', 'src');
-      bind('prop-w', 'width', v => parseInt(v) || 100);
-      bind('prop-h', 'height', v => parseInt(v) || 100);
-    } else {
-      bind('tb-font', 'fontFamily');
-      bind('tb-size', 'fontSize', v => parseInt(v) || 16);
-      bind('tb-color', 'color');
-      bind('prop-content', 'content');
-      bind('prop-w', 'width', v => parseInt(v) || null);
-      bind('prop-fs', 'fontSize', v => parseInt(v) || 16);
-
-      document.getElementById('tb-bold')?.addEventListener('click', () => {
-        sel.fontWeight = (sel.fontWeight === '700' || sel.fontWeight === 'bold') ? 'normal' : '700'; renderDesigner(app);
-      });
-      document.getElementById('tb-italic')?.addEventListener('click', () => {
-        sel.fontStyle = sel.fontStyle === 'italic' ? 'normal' : 'italic'; renderDesigner(app);
-      });
-      ['left', 'center', 'right'].forEach(a => {
-        document.getElementById(`tb-${a}`)?.addEventListener('click', () => { sel.textAlign = a; renderDesigner(app); });
-      });
-    }
-
-    bind('prop-x', 'x', v => parseInt(v) || 0);
-    bind('prop-y', 'y', v => parseInt(v) || 0);
-
-    document.getElementById('tb-dup')?.addEventListener('click', () => {
-      const dup = JSON.parse(JSON.stringify(sel)); dup.id = generateId(); dup.x += 20; dup.y += 20;
-      template.elements.push(dup); selectedId = dup.id; renderDesigner(app);
-    });
-    document.getElementById('tb-del')?.addEventListener('click', () => {
-      template.elements = template.elements.filter(e => e.id !== selectedId); selectedId = null; renderDesigner(app);
-    });
+    app.querySelector('#prop-content')?.addEventListener('input', e => { sel.content = e.target.value; renderDesigner(app); });
+    app.querySelector('#prop-font')?.addEventListener('change', e => { sel.fontFamily = e.target.value; renderDesigner(app); });
+    app.querySelector('#prop-fs')?.addEventListener('input', e => { sel.fontSize = parseInt(e.target.value) || 16; renderDesigner(app); });
+    app.querySelector('#prop-color')?.addEventListener('input', e => { sel.color = e.target.value; renderDesigner(app); });
+    app.querySelector('#prop-align')?.addEventListener('change', e => { sel.textAlign = e.target.value; renderDesigner(app); });
+    app.querySelector('#prop-x')?.addEventListener('input', e => { sel.x = parseInt(e.target.value) || 0; renderDesigner(app); });
+    app.querySelector('#prop-y')?.addEventListener('input', e => { sel.y = parseInt(e.target.value) || 0; renderDesigner(app); });
+    app.querySelector('#prop-w')?.addEventListener('input', e => { sel.width = parseInt(e.target.value) || 500; renderDesigner(app); });
   }
 
-  document.getElementById('bg-color')?.addEventListener('input', e => {
-    template.backgroundColor = e.target.value; canvas.style.background = e.target.value;
-  });
-  document.getElementById('bd-color')?.addEventListener('input', e => {
-    template.borderColor = e.target.value; canvas.style.borderColor = e.target.value;
-  });
-  document.getElementById('bd-style')?.addEventListener('change', e => {
-    template.borderStyle = e.target.value; canvas.style.borderStyle = e.target.value;
+  // Add text block
+  app.querySelector('#btn-add-text')?.addEventListener('click', () => {
+    const newEl = { id: generateId(), type: 'text', content: '{{name}}', x: 200, y: 250, fontSize: 32, color: '#0284c7', fontFamily: "'Great Vibes',cursive", fontWeight: '700', textAlign: 'center', width: 500 };
+    template.elements.push(newEl);
+    selectedId = newEl.id;
+    renderDesigner(app);
   });
 
-  document.getElementById('btn-add-el')?.addEventListener('click', () => {
-    const ne = el('New Text Box', 300, 300, 18, '#333', "'Outfit',sans-serif", '400', 'center', 250);
-    template.elements.push(ne); selectedId = ne.id; renderDesigner(app);
+  // Add logo image
+  app.querySelector('#btn-add-img')?.addEventListener('click', () => {
+    const newImg = { id: generateId(), type: 'image', src: 'logo.png', x: 350, y: 30, width: 100, height: 90 };
+    template.elements.push(newImg);
+    selectedId = newImg.id;
+    renderDesigner(app);
   });
 
-  // ADD IMAGE MODAL DIALOG
-  document.getElementById('btn-add-img')?.addEventListener('click', () => {
-    const o = document.createElement('div');
-    o.className = 'modal-overlay active';
-    o.innerHTML = `<div class="modal-clay scale-in" style="max-width: 500px">
-      <h3 style="font-size: 1.3rem; margin-bottom: 1rem; font-weight:800">📷 Add Image or Logo to Certificate</h3>
-      
-      <div style="display:flex; flex-direction:column; gap:0.75rem; text-align:left; margin-bottom: 1.5rem">
-        <button class="btn btn-secondary" id="btn-use-school-logo" style="justify-content:flex-start">
-          🏫 Use Gyan International School Logo (logo.png)
-        </button>
-        
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Upload Local Image File</label>
-          <input type="file" id="img-file-input" accept="image/*" class="form-input">
-        </div>
-        
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Or Image URL</label>
-          <input type="text" id="img-url-input" class="form-input" placeholder="https://example.com/logo.png">
-        </div>
-      </div>
-
-      <div style="display:flex; gap: 0.75rem; justify-content: center">
-        <button class="btn btn-secondary btn-sm" id="modal-img-cancel">Cancel</button>
-        <button class="btn btn-primary btn-sm" id="modal-img-confirm">Add Image</button>
-      </div>
-    </div>`;
-    document.body.appendChild(o);
-
-    const addImgObj = (src) => {
-      const imgEl = { id: generateId(), type: 'image', src, x: 380, y: 50, width: 120, height: 100 };
-      template.elements.push(imgEl); selectedId = imgEl.id;
-      o.remove();
-      renderDesigner(app);
-    };
-
-    o.querySelector('#btn-use-school-logo').onclick = () => addImgObj('logo.png');
-    o.querySelector('#modal-img-cancel').onclick = () => o.remove();
-    o.querySelector('#modal-img-confirm').onclick = () => {
-      const fileInput = o.querySelector('#img-file-input');
-      const urlInput = o.querySelector('#img-url-input');
-      if (fileInput.files && fileInput.files[0]) {
-        const reader = new FileReader();
-        reader.onload = e => addImgObj(e.target.result);
-        reader.readAsDataURL(fileInput.files[0]);
-      } else if (urlInput.value.trim()) {
-        addImgObj(urlInput.value.trim());
-      } else {
-        showToast('Please select a file or enter a URL', 'error');
-      }
-    };
-  });
-
-  document.getElementById('btn-save')?.addEventListener('click', async () => {
-    template.name = document.getElementById('tmpl-name')?.value || 'Untitled Certificate';
+  // Save template
+  app.querySelector('#btn-save')?.addEventListener('click', async () => {
+    template.name = app.querySelector('#tmpl-name')?.value?.trim() || 'Untitled Certificate';
     await saveCertTemplate(template);
-    showToast('Certificate template saved! 🎨');
+    showToast('Certificate template saved successfully! 🎨');
+    window.location.hash = '#/admin';
   });
-}
-
-function updateCanvasEl(data) {
-  const domEl = document.querySelector(`.cert-el[data-elid="${data.id}"]`);
-  if (!domEl) return;
-  domEl.style.left = data.x + 'px'; domEl.style.top = data.y + 'px';
-  if (data.type === 'image') {
-    domEl.style.width = (data.width || 100) + 'px';
-    domEl.style.height = (data.height || 100) + 'px';
-    const img = domEl.querySelector('img');
-    if (img) img.src = data.src;
-  } else {
-    domEl.style.fontSize = (data.fontSize || 16) + 'px'; domEl.style.color = data.color || '#333';
-    domEl.style.fontFamily = data.fontFamily || "'Playfair Display',serif";
-    domEl.style.fontWeight = data.fontWeight || 'normal';
-    domEl.style.fontStyle = data.fontStyle || 'normal';
-    domEl.style.textAlign = data.textAlign || 'center';
-    if (data.width) domEl.style.width = data.width + 'px'; else domEl.style.width = '';
-    
-    const isSel = data.id === selectedId;
-    const handleHtml = isSel ? `<div class="resize-handle" data-elid="${data.id}" title="Drag to Resize"></div>` : '';
-    domEl.innerHTML = escapeHtml(data.content || '') + handleHtml;
-  }
 }

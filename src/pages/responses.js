@@ -86,11 +86,12 @@ export async function renderResponses(app, params) {
                       <tr style="border-bottom: 2px solid rgba(0,0,0,0.08); text-align:left; color: var(--text-sub)">
                         <th style="padding: 0.75rem">Rank</th>
                         <th style="padding: 0.75rem">Student Name</th>
-                        <th style="padding: 0.75rem">Class / Custom Info</th>
+                        <th style="padding: 0.75rem">Class / Custom Details</th>
                         <th style="padding: 0.75rem">Email</th>
                         <th style="padding: 0.75rem; text-align:center">Score</th>
                         <th style="padding: 0.75rem; text-align:center">Percent</th>
                         <th style="padding: 0.75rem; text-align:center">Time Taken</th>
+                        <th style="padding: 0.75rem; text-align:center">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -108,6 +109,9 @@ export async function renderResponses(app, params) {
                               <span class="badge ${sub.percent >= 80 ? 'badge-success' : sub.percent >= 50 ? 'badge-warning' : 'badge-danger'}">${sub.percent}%</span>
                             </td>
                             <td style="padding: 0.75rem; text-align:center">${formatTime(sub.timeTaken || 0)}</td>
+                            <td style="padding: 0.75rem; text-align:center">
+                              <button class="btn btn-secondary btn-sm view-sub-detail" data-subidx="${i}" style="padding: 0.25rem 0.6rem; font-size: 0.75rem">🔍 View Answers</button>
+                            </td>
                           </tr>
                         `;
                       }).join('')}
@@ -146,4 +150,51 @@ export async function renderResponses(app, params) {
       </div>
     </div>
   `;
+
+  // Bind view details modal
+  const leaderboard = [...submissions].sort((a, b) => {
+    if (b.percent !== a.percent) return b.percent - a.percent;
+    if (a.timeTaken !== b.timeTaken) return (a.timeTaken || 0) - (b.timeTaken || 0);
+    return new Date(a.submittedAt) - new Date(b.submittedAt);
+  });
+
+  app.querySelectorAll('.view-sub-detail').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sub = leaderboard[parseInt(btn.dataset.subidx)];
+      if (!sub) return;
+      
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay active';
+      modal.innerHTML = `
+        <div class="modal-clay scale-in" style="max-width: 650px; text-align:left">
+          <h3 style="font-size: 1.3rem; font-weight:800; margin-bottom: 0.4rem">📋 Submission Details: ${escapeHtml(sub.participant?.name || 'Participant')}</h3>
+          <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 1rem">
+            Email: <strong>${escapeHtml(sub.participant?.email || '-')}</strong> | Score: <strong>${sub.score}/${sub.totalPoints} (${sub.percent}%)</strong> | Time: <strong>${formatTime(sub.timeTaken || 0)}</strong>
+          </p>
+
+          <div style="max-height: 400px; overflow-y:auto; display:flex; flex-direction:column; gap: 0.75rem; margin-bottom: 1.5rem">
+            ${(sub.questionResults || []).map((qr, qi) => `
+              <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-sm); border-left: 4px solid ${qr.correct ? 'var(--clay-success)' : 'var(--clay-danger)'}">
+                <div style="font-weight:700; font-size: 0.9rem; margin-bottom: 0.3rem">Q${qi + 1}. ${escapeHtml(qr.question)}</div>
+                <div style="font-size: 0.8rem; margin-bottom: 0.2rem">
+                  Student Answer: <span style="font-weight:700; color:${qr.correct ? 'var(--clay-success)' : 'var(--clay-danger)'}">${escapeHtml(qr.type === 'tf' ? qr.userAnswer : qr.options?.[parseInt(qr.userAnswer)] || qr.userAnswer || 'None')}</span>
+                </div>
+                ${!qr.correct ? `
+                  <div style="font-size: 0.8rem; color: var(--clay-success); font-weight:700">
+                    Correct Answer: ${escapeHtml(qr.type === 'tf' ? qr.correctAnswer : qr.options?.[parseInt(qr.correctAnswer)] || qr.correctAnswer)}
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+
+          <div style="text-align:right">
+            <button class="btn btn-primary btn-sm modal-close-btn">Close Window</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      modal.querySelector('.modal-close-btn').onclick = () => modal.remove();
+    });
+  });
 }

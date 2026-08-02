@@ -478,6 +478,37 @@ function renderResults(submission) {
           </div>
         ` : ''}
 
+        ${(quiz.showResults !== false && submission.questionResults) ? `
+          <div class="clay-card" style="margin-top: 1.5rem; padding: 2rem">
+            <h3 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 1.25rem">📝 Detailed Question Review & Correct Answers</h3>
+            <div style="display:flex; flex-direction:column; gap: 1rem">
+              ${submission.questionResults.map((qr, qi) => {
+                const isCorrect = qr.correct;
+                const userOptLabel = qr.type === 'tf' ? (qr.userAnswer === 'true' ? 'True' : qr.userAnswer === 'false' ? 'False' : 'Unanswered') : (qr.options?.[parseInt(qr.userAnswer)] || 'Unanswered');
+                const correctOptLabel = qr.type === 'tf' ? (qr.correctAnswer === 'true' ? 'True' : 'False') : (qr.options?.[parseInt(qr.correctAnswer)] || qr.correctAnswer);
+                return `
+                  <div style="padding: 1.1rem 1.25rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input); border-left: 5px solid ${isCorrect ? 'var(--clay-success)' : 'var(--clay-danger)'}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.6rem">
+                      <span style="font-weight:800; font-size: 0.95rem">Q${qi + 1}. ${escapeHtml(qr.question)}</span>
+                      <span class="badge ${isCorrect ? 'badge-success' : 'badge-danger'}" style="font-size: 0.8rem">
+                        ${isCorrect ? '✓ Correct (+' + qr.points + ' pts)' : '✗ Incorrect (0/' + qr.points + ' pts)'}
+                      </span>
+                    </div>
+                    <div style="font-size: 0.85rem; margin-bottom: 0.3rem">
+                      <strong>Your Selected Answer:</strong> <span style="color:${isCorrect ? 'var(--clay-success)' : 'var(--clay-danger)'}; font-weight:700">${escapeHtml(userOptLabel)}</span>
+                    </div>
+                    ${!isCorrect ? `
+                      <div style="font-size: 0.85rem; color: var(--clay-success); font-weight:700">
+                        <strong>Correct Answer:</strong> ${escapeHtml(correctOptLabel)}
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
         <div style="text-align:center; margin: 2rem 0">
           <a href="#/" class="btn btn-secondary btn-lg">← Return to Homepage</a>
         </div>
@@ -496,24 +527,30 @@ function renderCertificate(template, submission) {
   const el = document.getElementById('cert-render');
   if (!el) return;
   el.style.cssText = `width:900px;min-height:636px;position:relative;background:${template.backgroundColor || '#fffdf7'};border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'};padding:40px;font-family:'Playfair Display',serif;`;
+  
+  const bgHtml = template.backgroundImage ? `<img src="${template.backgroundImage}" style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none">` : '';
+
   const placeholders = {
-    '{{name}}': submission.participant.name || 'Participant',
-    '{{score}}': submission.score.toString(),
-    '{{total}}': submission.totalPoints.toString(),
-    '{{percent}}': submission.percent + '%',
+    '{{name}}': submission.participant?.name || 'Participant',
+    '{{score}}': (submission.score || 0).toString(),
+    '{{total}}': (submission.totalPoints || 0).toString(),
+    '{{percent}}': (submission.percent || 0) + '%',
     '{{date}}': new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     '{{quiz_title}}': quiz.title,
-    '{{email}}': submission.participant.email || '',
-    '{{org}}': submission.participant.org || '',
+    '{{email}}': submission.participant?.email || '',
+    '{{org}}': submission.participant?.org || '',
   };
-  el.innerHTML = (template.elements || []).map(e => {
+
+  const elementsHtml = (template.elements || []).map(e => {
     if (e.type === 'image') {
       return `<img src="${e.src}" style="position:absolute;left:${e.x}px;top:${e.y}px;width:${e.width || 100}px;height:${e.height || 100}px;object-fit:contain">`;
     }
     let c = e.content || '';
     for (const [k, v] of Object.entries(placeholders)) c = c.replaceAll(k, v);
-    return `<div style="position:absolute;left:${e.x}px;top:${e.y}px;font-size:${e.fontSize || 16}px;color:${e.color || '#333'};font-family:${e.fontFamily || "'Playfair Display',serif"};font-weight:${e.fontWeight || 'normal'};font-style:${e.fontStyle || 'normal'};text-align:${e.textAlign || 'center'};${e.width ? `width:${e.width}px;` : ''}white-space:pre-wrap;line-height:1.4">${c}</div>`;
+    return `<div style="position:absolute;left:${e.x}px;top:${e.y}px;font-size:${e.fontSize || 16}px;color:${e.color || '#333'};font-family:${e.fontFamily || "'Playfair Display',serif"};font-weight:${e.fontWeight || 'normal'};font-style:${e.fontStyle || 'normal'};text-align:${e.textAlign || 'center'};${e.width ? `width:${e.width}px;` : ''}white-space:pre-wrap;line-height:1.4">${escapeHtml(c)}</div>`;
   }).join('');
+
+  el.innerHTML = bgHtml + elementsHtml;
 }
 
 async function downloadCertPDF() {
