@@ -681,9 +681,12 @@ async function loadAndShowPptxCertPreview(certTemplate, submission) {
 
     if (container) {
       if (ext === 'pdf') {
+        container.style.padding = '0';
+        container.style.background = 'transparent';
+        container.style.boxShadow = 'none';
         container.innerHTML = `
-          <div style="width:100%; max-width:900px; display:flex; flex-direction:column; align-items:center">
-            <iframe src="${blobUrl}#toolbar=0&navpanes=0&scrollbar=0" style="width:100%; height:550px; border:none; border-radius: var(--radius-md); box-shadow: 0 8px 25px rgba(0,0,0,0.12); background:#fff"></iframe>
+          <div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,0.15)">
+            <iframe src="${blobUrl}#view=FitH&toolbar=0&navpanes=0&scrollbar=0" style="width:100%; aspect-ratio: 900 / 636; border:none; display:block; background:transparent"></iframe>
           </div>
         `;
       } else {
