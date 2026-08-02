@@ -130,6 +130,60 @@ async function renderPage(app) {
           </div>
         </div>
 
+        <!-- Participant Details & Custom Info Fields -->
+        <div class="clay-card" style="margin-bottom: 1.5rem">
+          <h3 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.5rem">📋 Participant Information Details Fields</h3>
+          <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 1.25rem">Configure student info collected before entering the quiz arena.</p>
+
+          <div style="display:flex; flex-wrap:wrap; gap: 1.25rem; margin-bottom: 1.25rem; padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
+            <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; cursor:pointer">
+              <input type="checkbox" id="quiz-collect-phone" ${currentQuiz.collectPhone ? 'checked' : ''}>
+              <span>Collect Phone Number</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; cursor:pointer">
+              <input type="checkbox" id="quiz-collect-org" ${currentQuiz.collectOrg ? 'checked' : ''}>
+              <span>Collect School / Institution</span>
+            </label>
+          </div>
+
+          <h4 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 0.75rem">Custom Info Fields (Class Dropdown, Roll No, Section)</h4>
+          <div id="custom-fields-list">
+            ${(currentQuiz.customFields || []).map((cf, cfi) => `
+              <div class="clay-card" style="padding: 1rem; margin-bottom: 0.75rem; background: #fff" data-cfi="${cfi}">
+                <div style="display:grid; grid-template-columns: 2fr 1fr 2fr 1fr auto; gap: 0.75rem; align-items:center">
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem">Field Name / Label</label>
+                    <input type="text" class="form-input cf-label" data-cfi="${cfi}" value="${escapeHtml(cf.label)}" placeholder="e.g. Class / Grade">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem">Field Type</label>
+                    <select class="form-select cf-type" data-cfi="${cfi}">
+                      <option value="text" ${cf.type === 'text' ? 'selected' : ''}>Short Text</option>
+                      <option value="dropdown" ${cf.type === 'dropdown' ? 'selected' : ''}>Dropdown Select</option>
+                      <option value="number" ${cf.type === 'number' ? 'selected' : ''}>Number</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem">Dropdown Options (Comma-separated)</label>
+                    <input type="text" class="form-input cf-options" data-cfi="${cfi}" value="${escapeHtml(cf.options || '')}" placeholder="Class 6, Class 7, Class 8" ${cf.type !== 'dropdown' ? 'disabled style="opacity:0.5"' : ''}>
+                  </div>
+                  <div style="display:flex; align-items:center; height:100%; padding-top: 1.2rem">
+                    <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer">
+                      <input type="checkbox" class="cf-req" data-cfi="${cfi}" ${cf.required ? 'checked' : ''}>
+                      <span>Required</span>
+                    </label>
+                  </div>
+                  <div style="padding-top: 1rem">
+                    <button class="btn btn-danger btn-sm cf-del" data-cfi="${cfi}" style="padding: 0.35rem 0.65rem">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <button class="btn btn-secondary btn-sm" id="btn-add-custom-field" style="margin-top: 0.5rem">+ Add Info Field (e.g. Class, Roll No)</button>
+        </div>
+
         <!-- Questions List -->
         <h3 style="font-size: 1.2rem; font-weight: 800; margin-bottom: 1rem">❓ Questions (${currentQuiz.questions.length})</h3>
         <div id="questions-container">
@@ -231,6 +285,26 @@ function sync(app) {
   currentQuiz.showResults = app.querySelector('#quiz-show-results')?.checked ?? true;
   currentQuiz.limitPerUser = app.querySelector('#quiz-limit-user')?.checked ?? true;
   currentQuiz.certificateTemplateId = app.querySelector('#quiz-cert-template')?.value || '';
+  currentQuiz.collectPhone = app.querySelector('#quiz-collect-phone')?.checked || false;
+  currentQuiz.collectOrg = app.querySelector('#quiz-collect-org')?.checked || false;
+
+  currentQuiz.customFields = currentQuiz.customFields || [];
+  app.querySelectorAll('.cf-label').forEach(el => {
+    const cfi = parseInt(el.dataset.cfi);
+    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].label = el.value;
+  });
+  app.querySelectorAll('.cf-type').forEach(el => {
+    const cfi = parseInt(el.dataset.cfi);
+    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].type = el.value;
+  });
+  app.querySelectorAll('.cf-options').forEach(el => {
+    const cfi = parseInt(el.dataset.cfi);
+    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].options = el.value;
+  });
+  app.querySelectorAll('.cf-req').forEach(el => {
+    const cfi = parseInt(el.dataset.cfi);
+    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].required = el.checked;
+  });
 
   app.querySelectorAll('.q-text').forEach(el => {
     const i = parseInt(el.dataset.qi);
@@ -291,6 +365,37 @@ function validateQuiz(app) {
 }
 
 function bindEvents(app) {
+  app.querySelector('#btn-add-custom-field')?.addEventListener('click', async () => {
+    sync(app);
+    currentQuiz.customFields = currentQuiz.customFields || [];
+    currentQuiz.customFields.push({
+      id: generateId(),
+      label: 'Class / Grade',
+      type: 'dropdown',
+      options: 'Class 6, Class 7, Class 8, Class 9, Class 10',
+      required: true
+    });
+    await saveQuiz(currentQuiz);
+    renderPage(app);
+  });
+
+  app.querySelectorAll('.cf-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      sync(app);
+      const cfi = parseInt(btn.dataset.cfi);
+      currentQuiz.customFields.splice(cfi, 1);
+      await saveQuiz(currentQuiz);
+      renderPage(app);
+    });
+  });
+
+  app.querySelectorAll('.cf-type').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      sync(app);
+      renderPage(app);
+    });
+  });
+
   app.querySelector('#btn-save')?.addEventListener('click', async () => {
     if (!validateQuiz(app)) return;
     await saveQuiz(currentQuiz);

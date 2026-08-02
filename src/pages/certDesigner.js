@@ -2,7 +2,9 @@ import { saveCertTemplate, getCertTemplate, deleteCertTemplate, generateId } fro
 import { renderNavbar, showToast, escapeHtml } from '../utils.js';
 import { requireAdmin } from '../auth.js';
 
-let template = null, selectedId = null, isDragging = false, dragStart = { x: 0, y: 0 }, elStart = { x: 0, y: 0 };
+let template = null, selectedId = null, isDragging = false, isResizing = false;
+let dragStart = { x: 0, y: 0 }, elStart = { x: 0, y: 0 };
+let resizeStart = { x: 0, y: 0 }, elSizeStart = { w: 100, h: 100, fs: 16 };
 
 export async function renderCertDesigner(app, params) {
   if (!requireAdmin()) return;
@@ -129,17 +131,21 @@ function renderDesigner(app) {
         <div class="designer-canvas-area" id="canvas-area">
           <div class="cert-canvas" id="cert-canvas" style="background:${template.backgroundColor}; border:${template.borderWidth || 8}px ${template.borderStyle || 'double'} ${template.borderColor || '#c8a96e'}">
             ${template.elements.map(e => {
+              const isSel = e.id === selectedId;
+              const handleHtml = isSel ? `<div class="resize-handle" data-elid="${e.id}" title="Drag to Resize"></div>` : '';
               if (e.type === 'image') {
                 return `
-                  <div class="cert-el ${e.id === selectedId ? 'selected' : ''}" data-elid="${e.id}"
+                  <div class="cert-el ${isSel ? 'selected' : ''}" data-elid="${e.id}"
                     style="left:${e.x}px; top:${e.y}px; width:${e.width || 100}px; height:${e.height || 100}px">
                     <img src="${e.src}" style="width:100%; height:100%; object-fit:contain; pointer-events:none">
+                    ${handleHtml}
                   </div>`;
               }
               return `
-                <div class="cert-el ${e.id === selectedId ? 'selected' : ''}" data-elid="${e.id}"
+                <div class="cert-el ${isSel ? 'selected' : ''}" data-elid="${e.id}"
                   style="left:${e.x}px; top:${e.y}px; font-size:${e.fontSize || 16}px; color:${e.color || '#333'}; font-family:${e.fontFamily || "'Playfair Display',serif"}; font-weight:${e.fontWeight || 'normal'}; font-style:${e.fontStyle || 'normal'}; text-align:${e.textAlign || 'center'}; ${e.width ? `width:${e.width}px;` : ''} white-space:pre-wrap; line-height:1.4">
                   ${e.content}
+                  ${handleHtml}
                 </div>`;
             }).join('')}
           </div>
@@ -228,6 +234,7 @@ function bindDesignerEvents(app) {
 
   document.querySelectorAll('.cert-el').forEach(domEl => {
     domEl.addEventListener('mousedown', e => {
+      if (e.target.classList.contains('resize-handle')) return;
       e.stopPropagation();
       selectedId = domEl.dataset.elid;
       const elData = template.elements.find(x => x.id === selectedId);
@@ -240,24 +247,66 @@ function bindDesignerEvents(app) {
     });
   });
 
+  document.querySelectorAll('.resize-handle').forEach(handle => {
+    handle.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      selectedId = handle.dataset.elid;
+      const elData = template.elements.find(x => x.id === selectedId);
+      if (elData) {
+        isResizing = true;
+        resizeStart = { x: e.clientX, y: e.clientY };
+        elSizeStart = {
+          w: elData.width || (elData.type === 'image' ? 100 : 300),
+          h: elData.height || 100,
+          fs: elData.fontSize || 16
+        };
+      }
+    });
+  });
+
   canvas?.addEventListener('mousedown', e => {
     if (e.target === canvas) { selectedId = null; renderDesigner(app); }
   });
 
   const onMove = (e) => {
-    if (!isDragging || !selectedId) return;
-    const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
-    const elData = template.elements.find(x => x.id === selectedId);
-    if (elData) {
-      elData.x = Math.max(0, Math.round(elStart.x + dx));
-      elData.y = Math.max(0, Math.round(elStart.y + dy));
-      const domEl = canvas?.querySelector(`[data-elid="${selectedId}"]`);
-      if (domEl) { domEl.style.left = elData.x + 'px'; domEl.style.top = elData.y + 'px'; }
-      const px = document.getElementById('prop-x'), py = document.getElementById('prop-y');
-      if (px) px.value = elData.x; if (py) py.value = elData.y;
+    if (!selectedId) return;
+    if (isResizing) {
+      const dx = e.clientX - resizeStart.x;
+      const dy = e.clientY - resizeStart.y;
+      const elData = template.elements.find(x => x.id === selectedId);
+      if (elData) {
+        if (elData.type === 'image') {
+          elData.width = Math.max(20, Math.round(elSizeStart.w + dx));
+          elData.height = Math.max(20, Math.round(elSizeStart.h + dy));
+        } else {
+          elData.width = Math.max(50, Math.round(elSizeStart.w + dx));
+          if (dy !== 0) {
+            elData.fontSize = Math.max(8, Math.round(elSizeStart.fs + Math.round(dy / 4)));
+          }
+        }
+        updateCanvasEl(elData);
+        const pw = document.getElementById('prop-w'), ph = document.getElementById('prop-h'), pfs = document.getElementById('prop-fs');
+        if (pw) pw.value = elData.width;
+        if (ph) ph.value = elData.height || '';
+        if (pfs) pfs.value = elData.fontSize || '';
+      }
+      return;
+    }
+    if (isDragging) {
+      const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+      const elData = template.elements.find(x => x.id === selectedId);
+      if (elData) {
+        elData.x = Math.max(0, Math.round(elStart.x + dx));
+        elData.y = Math.max(0, Math.round(elStart.y + dy));
+        const domEl = canvas?.querySelector(`[data-elid="${selectedId}"]`);
+        if (domEl) { domEl.style.left = elData.x + 'px'; domEl.style.top = elData.y + 'px'; }
+        const px = document.getElementById('prop-x'), py = document.getElementById('prop-y');
+        if (px) px.value = elData.x; if (py) py.value = elData.y;
+      }
     }
   };
-  const onUp = () => { isDragging = false; };
+  const onUp = () => { isDragging = false; isResizing = false; };
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 

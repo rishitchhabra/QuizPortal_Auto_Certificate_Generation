@@ -42,40 +42,80 @@ export async function renderResponses(app, params) {
         </div>
 
         ${submissions.length > 0 ? `
-          <!-- Table Card -->
-          <div class="clay-card" style="overflow-x:auto; margin-bottom: 2rem">
-            <table style="width:100%; border-collapse:collapse; font-size: 0.85rem">
-              <thead>
-                <tr style="border-bottom: 2px solid rgba(255,255,255,0.06); text-align:left; color: var(--text-sub)">
-                  <th style="padding: 0.8rem">#</th>
-                  <th style="padding: 0.8rem">Participant Name</th>
-                  <th style="padding: 0.8rem">Google Email</th>
-                  <th style="padding: 0.8rem; text-align:center">Score</th>
-                  <th style="padding: 0.8rem; text-align:center">Percent</th>
-                  <th style="padding: 0.8rem; text-align:center">Status</th>
-                  <th style="padding: 0.8rem; text-align:center">Time Taken</th>
-                  <th style="padding: 0.8rem">Submitted At</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${submissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)).map((sub, i) => `
-                  <tr style="border-bottom: 1px solid rgba(255,255,255,0.04)">
-                    <td style="padding: 0.8rem; color: var(--text-muted)">${i + 1}</td>
-                    <td style="padding: 0.8rem; font-weight: 700">${escapeHtml(sub.participant?.name || 'Anonymous')}</td>
-                    <td style="padding: 0.8rem; color: var(--text-sub)">${escapeHtml(sub.participant?.email || '-')}</td>
-                    <td style="padding: 0.8rem; text-align:center; font-weight: 700">${sub.score}/${sub.totalPoints}</td>
-                    <td style="padding: 0.8rem; text-align:center">
-                      <span class="badge ${sub.percent >= 80 ? 'badge-success' : sub.percent >= 50 ? 'badge-warning' : 'badge-danger'}">${sub.percent}%</span>
-                    </td>
-                    <td style="padding: 0.8rem; text-align:center">
-                      <span class="badge ${sub.passed ? 'badge-success' : 'badge-danger'}">${sub.passed ? '✓ Passed' : '✗ Failed'}</span>
-                    </td>
-                    <td style="padding: 0.8rem; text-align:center">${formatTime(sub.timeTaken || 0)}</td>
-                    <td style="padding: 0.8rem; color: var(--text-muted); font-size: 0.75rem">${new Date(sub.submittedAt).toLocaleString()}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
+          <!-- 🏆 LEADERBOARD / HALL OF FAME -->
+          <div class="clay-card" style="margin-bottom: 2.5rem; background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,249,255,0.98))">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem">
+              <h2 style="font-size: 1.35rem; font-weight: 900; display:flex; align-items:center; gap: 0.5rem">
+                🏆 Evaluation Leaderboard & Hall of Fame
+              </h2>
+              <span class="badge badge-success" style="font-weight:800">${submissions.length} Ranked</span>
+            </div>
+
+            <!-- Top 3 Podium Cards -->
+            ${(() => {
+              const leaderboard = [...submissions].sort((a, b) => {
+                if (b.percent !== a.percent) return b.percent - a.percent;
+                if (a.timeTaken !== b.timeTaken) return (a.timeTaken || 0) - (b.timeTaken || 0);
+                return new Date(a.submittedAt) - new Date(b.submittedAt);
+              });
+              return `
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem">
+                  ${leaderboard.slice(0, 3).map((sub, rank) => {
+                    const medals = ['🥇 1st Place', '🥈 2nd Place', '🥉 3rd Place'];
+                    const colors = ['#f59e0b', '#64748b', '#d97706'];
+                    const customDetails = sub.participant?.custom ? Object.entries(sub.participant.custom).map(([k, v]) => `${k}: ${v}`).join(' | ') : (sub.participant?.org || '');
+                    return `
+                      <div class="clay-card" style="text-align:center; padding: 1.25rem; border: 2px solid ${colors[rank]}; background: #ffffff">
+                        <div style="font-size: 2.2rem; margin-bottom: 0.2rem">${medals[rank].split(' ')[0]}</div>
+                        <div style="font-weight: 900; font-size: 0.8rem; color: ${colors[rank]}; text-transform:uppercase">${medals[rank]}</div>
+                        <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0.4rem 0 0.2rem">${escapeHtml(sub.participant?.name || 'Anonymous')}</h3>
+                        <div style="font-size: 0.75rem; color: var(--text-sub); margin-bottom: 0.4rem">${escapeHtml(sub.participant?.email || '')}</div>
+                        ${customDetails ? `<div style="font-size: 0.75rem; font-weight: 700; color: var(--clay-primary); margin-bottom: 0.5rem">${escapeHtml(customDetails)}</div>` : ''}
+                        <div style="display:flex; justify-content:center; gap: 0.5rem; font-size: 0.85rem">
+                          <span class="badge badge-success" style="font-weight:900">${sub.percent}% (${sub.score}/${sub.totalPoints})</span>
+                          <span class="badge badge-clay">⏱️ ${formatTime(sub.timeTaken || 0)}</span>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+
+                <div style="overflow-x:auto">
+                  <table style="width:100%; border-collapse:collapse; font-size: 0.85rem">
+                    <thead>
+                      <tr style="border-bottom: 2px solid rgba(0,0,0,0.08); text-align:left; color: var(--text-sub)">
+                        <th style="padding: 0.75rem">Rank</th>
+                        <th style="padding: 0.75rem">Student Name</th>
+                        <th style="padding: 0.75rem">Class / Custom Info</th>
+                        <th style="padding: 0.75rem">Email</th>
+                        <th style="padding: 0.75rem; text-align:center">Score</th>
+                        <th style="padding: 0.75rem; text-align:center">Percent</th>
+                        <th style="padding: 0.75rem; text-align:center">Time Taken</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${leaderboard.map((sub, i) => {
+                        const rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+                        const customStr = sub.participant?.custom ? Object.entries(sub.participant.custom).map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}`).join(' · ') : (escapeHtml(sub.participant?.org || '-'));
+                        return `
+                          <tr style="border-bottom: 1px solid rgba(0,0,0,0.04); ${i < 3 ? 'font-weight:700; background: rgba(2,132,199,0.03)' : ''}">
+                            <td style="padding: 0.75rem; font-size: 1rem">${rankIcon}</td>
+                            <td style="padding: 0.75rem; font-weight:800">${escapeHtml(sub.participant?.name || 'Anonymous')}</td>
+                            <td style="padding: 0.75rem; font-size: 0.8rem; color: var(--clay-primary)">${customStr}</td>
+                            <td style="padding: 0.75rem; color: var(--text-sub); font-size: 0.8rem">${escapeHtml(sub.participant?.email || '-')}</td>
+                            <td style="padding: 0.75rem; text-align:center; font-weight:800">${sub.score}/${sub.totalPoints}</td>
+                            <td style="padding: 0.75rem; text-align:center">
+                              <span class="badge ${sub.percent >= 80 ? 'badge-success' : sub.percent >= 50 ? 'badge-warning' : 'badge-danger'}">${sub.percent}%</span>
+                            </td>
+                            <td style="padding: 0.75rem; text-align:center">${formatTime(sub.timeTaken || 0)}</td>
+                          </tr>
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `;
+            })()}
           </div>
 
           <!-- Question Difficulty Analysis -->

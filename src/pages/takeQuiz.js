@@ -202,9 +202,23 @@ async function renderParticipantForm(app) {
             <span class="badge badge-success">Google Verified</span>
           </div>
 
-          ${quiz.collectPhone ? `<div class="form-group"><label class="form-label">Phone Number</label><input type="tel" class="form-input" id="p-phone"></div>` : ''}
-          ${quiz.collectOrg ? `<div class="form-group"><label class="form-label">Institution / Class</label><input type="text" class="form-input" id="p-org"></div>` : ''}
+          ${quiz.collectPhone ? `<div class="form-group"><label class="form-label">Phone Number</label><input type="tel" class="form-input" id="p-phone" placeholder="Enter phone number"></div>` : ''}
+          ${quiz.collectOrg ? `<div class="form-group"><label class="form-label">Institution / School</label><input type="text" class="form-input" id="p-org" placeholder="Enter institution / school"></div>` : ''}
           
+          ${(quiz.customFields || []).map((cf, cfi) => `
+            <div class="form-group">
+              <label class="form-label">${escapeHtml(cf.label)} ${cf.required ? '<span style="color:var(--clay-danger)">*</span>' : ''}</label>
+              ${cf.type === 'dropdown' ? `
+                <select class="form-select custom-field-val" data-cfi="${cfi}" data-label="${escapeHtml(cf.label)}">
+                  <option value="">-- Select ${escapeHtml(cf.label)} --</option>
+                  ${(cf.options || '').split(',').map(s => s.trim()).filter(Boolean).map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('')}
+                </select>
+              ` : `
+                <input type="${cf.type === 'number' ? 'number' : 'text'}" class="form-input custom-field-val" data-cfi="${cfi}" data-label="${escapeHtml(cf.label)}" placeholder="Enter ${escapeHtml(cf.label)}">
+              `}
+            </div>
+          `).join('')}
+
           <button class="btn btn-primary btn-lg" style="width:100%; margin-top: 0.5rem" id="btn-start-quiz">
             🚀 Begin Quiz Arena
           </button>
@@ -215,6 +229,22 @@ async function renderParticipantForm(app) {
   app.querySelector('#btn-start-quiz').addEventListener('click', () => {
     if (quiz.collectPhone) participant.phone = app.querySelector('#p-phone')?.value?.trim() || '';
     if (quiz.collectOrg) participant.org = app.querySelector('#p-org')?.value?.trim() || '';
+
+    participant.custom = {};
+    let reqMissing = false;
+    app.querySelectorAll('.custom-field-val').forEach(el => {
+      const cfi = parseInt(el.dataset.cfi);
+      const cf = quiz.customFields?.[cfi];
+      const val = el.value?.trim() || '';
+      if (cf?.required && !val) {
+        showToast(`Please fill in ${cf.label}`, 'error');
+        reqMissing = true;
+      }
+      if (val) participant.custom[cf?.label || `Field_${cfi}`] = val;
+    });
+
+    if (reqMissing) return;
+
     quizStarted = true;
     timeLeft = (quiz.timerMinutes || 30) * 60;
     if (quiz.shuffleQuestions) quiz.questions = shuffleArray(quiz.questions);
@@ -261,14 +291,14 @@ function renderContinuousQuizShell(app) {
 
               <div class="options-group" data-qi="${i}">
                 ${q.type === 'tf' ? `
-                  <button class="quiz-option-btn" data-qi="${i}" data-answer="true">
+                  <button class="quiz-option-btn ${answers[i] === 'true' ? 'selected' : ''}" data-qi="${i}" data-answer="true">
                     <span class="opt-letter opt-0">T</span><span>True</span>
                   </button>
-                  <button class="quiz-option-btn" data-qi="${i}" data-answer="false">
+                  <button class="quiz-option-btn ${answers[i] === 'false' ? 'selected' : ''}" data-qi="${i}" data-answer="false">
                     <span class="opt-letter opt-1">F</span><span>False</span>
                   </button>
                 ` : (q.options || []).map((opt, oi) => `
-                  <button class="quiz-option-btn" data-qi="${i}" data-answer="${oi}">
+                  <button class="quiz-option-btn ${answers[i] === oi.toString() ? 'selected' : ''}" data-qi="${i}" data-answer="${oi}">
                     <span class="opt-letter opt-${oi % 4}">${letters[oi]}</span><span>${escapeHtml(opt)}</span>
                   </button>
                 `).join('')}
@@ -312,6 +342,7 @@ function renderContinuousQuizShell(app) {
   });
 
   app.querySelector('#btn-submit-continuous').addEventListener('click', validateAndSubmit);
+  updateProgress();
 }
 
 function updateProgress() {
@@ -332,20 +363,21 @@ function validateAndSubmit() {
       if (card) {
         card.classList.add('has-error');
         if (errBanner) {
-          errBanner.innerHTML = `<div class="required-error-banner">⚠️ Please Answer the question</div>`;
+          errBanner.innerHTML = `<div class="required-error-banner">⚠️ Please Answer this question</div>`;
         }
         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      showToast(`Please Answer Question #${i + 1}`, 'error');
+      showToast(`Please answer Question #${i + 1}`, 'error');
       return;
     }
   }
 
-  showModal('Submit Quiz Arena?', '<p>Are you sure you want to finalize and submit your responses?</p>', submitQuiz);
+  showModal('Submit Quiz Arena?', '<p>Are you sure you want to finalize and submit your responses?</p>', () => submitQuiz(false));
 }
 
 function startTimer() {
   const timerEl = document.getElementById('timer');
+  if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(() => {
     timeLeft--;
     if (timerEl) {
@@ -354,30 +386,51 @@ function startTimer() {
       if (timeLeft <= 60) timerEl.classList.add('danger');
       else if (timeLeft <= 300) timerEl.classList.add('warning');
     }
-    if (timeLeft <= 0) { clearInterval(timerInterval); submitQuiz(); }
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      showToast('⏰ Time is up! Submitting evaluation automatically...', 'info');
+      submitQuiz(true);
+    }
   }, 1000);
 }
 
-async function submitQuiz() {
+async function submitQuiz(force = false) {
   if (quizSubmitted) return;
   quizSubmitted = true;
   if (timerInterval) clearInterval(timerInterval);
+
+  const btn = document.getElementById('btn-submit-continuous');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Submitting Quiz & Evaluating...';
+  }
 
   let score = 0, totalPoints = 0;
   const questionResults = [];
   quiz.questions.forEach((q, i) => {
     const pts = q.points || 1; totalPoints += pts;
-    const correct = answers[i] === q.correctAnswer;
+    const correct = String(answers[i]) === String(q.correctAnswer);
     if (correct) score += pts;
     questionResults.push({ question: q.text, userAnswer: answers[i], correctAnswer: q.correctAnswer, correct, points: pts, options: q.options, type: q.type });
   });
 
   const percent = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
   const passed = percent >= (quiz.passingPercent || 50);
-  const timeTaken = (quiz.timerMinutes * 60) - timeLeft;
+  const timeTaken = Math.max(1, (quiz.timerMinutes * 60) - timeLeft);
   const submission = { id: generateId(), quizId: quiz.id, participant, answers, score, totalPoints, percent, passed, timeTaken, questionResults, submittedAt: new Date().toISOString() };
-  await saveSubmission(submission);
-  renderResults(submission);
+  
+  try {
+    await saveSubmission(submission);
+    renderResults(submission);
+  } catch (err) {
+    console.error('Submission error:', err);
+    quizSubmitted = false;
+    showToast('Failed to save submission: ' + (err.message || 'Server error'), 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '✅ Complete & Submit Quiz';
+    }
+  }
 }
 
 function renderResults(submission) {
