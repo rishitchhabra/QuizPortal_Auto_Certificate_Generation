@@ -9,12 +9,12 @@
   --bg: #F8FAFC;
   --surface: #FFFFFF;
   --surface-subtle: #F1F5F9;
-  --border: #E5E7EB;
-  --border-strong: #D1D5DB;
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
 
-  --text: #111827;
-  --text-2: #6B7280;
-  --text-3: #9CA3AF;
+  --text: #0F172A;
+  --text-2: #475569;
+  --text-3: #64748B;
 
   /* Accent */
   --blue: #2563EB;
@@ -744,20 +744,43 @@ input, textarea, select { font-family: inherit; }
 .q-item-copy { flex: 1; min-width: 0; }
 .q-item-text { font-size: 13px; font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-item-meta { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
-.q-item .state-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.q-item .state-dot.done { background: var(--green); }
-.q-item .state-dot.empty { background: var(--text-3); }
+.q-item-meta .check-inline { color: var(--green); vertical-align: -1px; margin-right: 3px; }
 .sidebar-add { padding: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 
 /* Editor main */
 .editor-main { display: flex; flex-direction: column; gap: 20px; }
 .q-editor-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; }
-.q-editor-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface-subtle); }
+.q-editor-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface-subtle); }
+.q-editor-title-group { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.q-editor-index {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 34px; height: 28px; padding: 0 8px; border-radius: var(--r-sm);
+  background: var(--surface); border: 1px solid var(--border-strong);
+  font-size: 12.5px; font-weight: 700; color: var(--text-2);
+}
+.q-editor-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .q-editor-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .panel { padding: 24px 20px; }
 
-.option-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-bottom: 10px; }
-.option-row .radio { flex: none; }
+.option-row { display: grid; grid-template-columns: 48px 1fr 36px; gap: 10px; align-items: center; margin-bottom: 10px; }
+.radio-field {
+  position: relative; width: 48px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; border-radius: var(--r-sm); transition: background .12s var(--ease);
+}
+.radio-field:hover { background: var(--surface-subtle); }
+.radio-field input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.radio-custom {
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  border: 1.5px solid var(--border-strong); position: relative;
+  background: var(--surface); transition: all .15s var(--ease);
+}
+.radio-field:hover .radio-custom { border-color: var(--text-3); }
+.radio-field input:checked + .radio-custom { border-color: var(--blue); }
+.radio-field input:checked + .radio-custom::after {
+  content: ''; position: absolute; inset: 3px; background: var(--blue); border-radius: 50%;
+}
+.radio-field input:focus-visible + .radio-custom { box-shadow: 0 0 0 3px var(--blue-soft); }
 .footer-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .icon-spin { animation: spin 1s linear infinite; }
 

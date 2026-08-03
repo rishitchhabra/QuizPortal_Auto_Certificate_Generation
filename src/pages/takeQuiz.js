@@ -64,55 +64,67 @@ function renderNotice(app, { icon, title, desc }) {
     </div>`;
 }
 
-function renderGoogleSignIn(app, clientId) {
+function quizIntroHeader() {
   const totalPts = quiz.questions.reduce((s, q) => s + (q.points || 1), 0);
+  const hasCert = !!quiz.certificateTemplateId;
+  return `
+    <div class="quiz-intro">
+      <div class="quiz-intro-icon">${Icon('book-open', 22)}</div>
+      <div class="eyebrow">${Icon('graduation-cap', 13)}<span>Gyan International School · Assessment</span></div>
+      <h1 class="quiz-intro-title">${escapeHtml(quiz.title)}</h1>
+      ${quiz.description ? `<p class="quiz-intro-desc">${escapeHtml(quiz.description)}</p>` : ''}
 
+      <div class="quiz-intro-stats">
+        <div class="stat-card-mini">
+          <span class="mini-icon stat-blue">${Icon('list-checks', 15)}</span>
+          <span class="mini-val">${quiz.questions.length}</span>
+          <span class="mini-label">Questions</span>
+        </div>
+        <div class="stat-card-mini">
+          <span class="mini-icon stat-amber">${Icon('clock', 15)}</span>
+          <span class="mini-val">${quiz.timerMinutes || 30} min</span>
+          <span class="mini-label">Duration</span>
+        </div>
+        <div class="stat-card-mini">
+          <span class="mini-icon stat-violet">${Icon('target', 15)}</span>
+          <span class="mini-val">${totalPts}</span>
+          <span class="mini-label">Total points</span>
+        </div>
+        <div class="stat-card-mini">
+          <span class="mini-icon stat-green">${Icon('award', 15)}</span>
+          <span class="mini-val">${quiz.passingPercent || 50}%</span>
+          <span class="mini-label">Pass mark</span>
+        </div>
+      </div>
+
+      ${hasCert ? `
+        <div class="quiz-cert-note">${Icon('award', 15)}<span>Pass the quiz and download your official certificate instantly.</span></div>
+      ` : ''}
+      ${quiz.deadline ? `
+        <div class="info" style="margin-top:12px">${Icon('clock', 16)}<span>Attempt deadline: <strong>${new Date(quiz.deadline).toLocaleString()}</strong></span></div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderGoogleSignIn(app, clientId) {
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
       <div class="container-take" style="padding-top:24px">
         <div class="quiz-panel" style="text-align:left">
-          <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px">
-            <img src="/logo.png" alt="Gyan International School" style="height:40px; width:auto">
-            <div>
-              <div class="sm text-3">Gyan International School · Assessment</div>
-              <h1 style="font-size:22px; font-weight:800; letter-spacing:-0.02em">${escapeHtml(quiz.title)}</h1>
-            </div>
-          </div>
+          ${quizIntroHeader()}
 
-          ${quiz.description ? `<p style="color:var(--text-2); font-size:15px; margin-bottom:24px">${escapeHtml(quiz.description)}</p>` : ''}
-
-          <div class="stat-grid" style="margin-bottom:24px">
-            <div class="card" style="padding:16px; text-align:center; box-shadow:none">
-              <div class="stat-value" style="font-size:22px">${quiz.questions.length}</div>
-              <div class="stat-label">Questions</div>
-            </div>
-            <div class="card" style="padding:16px; text-align:center; box-shadow:none">
-              <div class="stat-value" style="font-size:22px">${quiz.timerMinutes || 30} min</div>
-              <div class="stat-label">Duration</div>
-            </div>
-            <div class="card" style="padding:16px; text-align:center; box-shadow:none">
-              <div class="stat-value" style="font-size:22px">${totalPts}</div>
-              <div class="stat-label">Total points</div>
-            </div>
-          </div>
-
-          ${quiz.deadline ? `
-            <div class="info" style="margin-bottom:20px">
-              ${Icon('clock', 16)}<span>Attempt deadline: <strong>${new Date(quiz.deadline).toLocaleString()}</strong></span>
-            </div>
-          ` : ''}
-
-          <div style="border-top:1px solid var(--border); padding-top:22px; margin-top:6px">
-            <div class="flex items-center gap-sm" style="margin-bottom:16px">
+          <div class="quiz-account-group">
+            <div class="account-group-head">
               <div class="stat-icon stat-blue" style="width:36px; height:36px">${Icon('user', 17)}</div>
               <div>
                 <div style="font-weight:600; font-size:15px">Sign in to begin</div>
                 <div class="xs muted">Your verified Google account records your attempt.</div>
               </div>
             </div>
-            <div id="google-btn-container" style="margin-bottom:14px"></div>
-            <p class="xs text-3">Only your name and email address are recorded with your submission.</p>
+            <div id="google-btn-container" style="margin-top:16px"></div>
+            <p class="xs text-3" style="margin-top:12px; text-align:center">Only your name and email address are recorded with your submission.</p>
           </div>
         </div>
       </div>
@@ -155,41 +167,40 @@ async function renderParticipantForm(app) {
     <div class="page fade-in">
       <div class="container-take" style="padding-top:24px">
         <div class="quiz-panel" style="text-align:left">
-          <div class="flex items-center" style="gap:14px; margin-bottom:20px">
-            <img src="/logo.png" alt="Gyan International School" style="height:40px; width:auto">
-            <div>
-              <div class="sm text-3">Gyan International School · Assessment</div>
-              <h1 style="font-size:22px; font-weight:800; letter-spacing:-0.02em">${escapeHtml(quiz.title)}</h1>
-            </div>
-          </div>
+          ${quizIntroHeader()}
 
-          <div class="flex items-center" style="gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:var(--r-md); background:var(--bg); margin-bottom:22px">
-            ${guser?.picture ? `<img src="${guser.picture}" alt="" style="width:38px; height:38px; border-radius:50%">` : `<span class="stat-icon stat-gray" style="width:38px; height:38px">${Icon('user', 17)}</span>`}
-            <div style="flex:1; min-width:0">
-              <div style="font-weight:600; font-size:14px">${escapeHtml(participant.name || 'Participant')}</div>
-              <div class="xs muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(participant.email || '')}</div>
-            </div>
-            ${Badge('Google verified', { tone: 'green', dot: true })}
-          </div>
-
-          <div style="margin-bottom:6px">
-            ${quiz.collectPhone ? `<div style="margin-bottom:14px">${fieldLabel('Phone number')}<input type="tel" class="input" id="p-phone" placeholder="Enter phone number" autocomplete="tel"></div>` : ''}
-            ${quiz.collectOrg ? `<div style="margin-bottom:14px">${fieldLabel('Institution / School')}<input type="text" class="input" id="p-org" placeholder="Enter institution / school" autocomplete="organization"></div>` : ''}
-            ${(quiz.customFields || []).map((cf, cfi) => `
-              <div style="margin-bottom:14px">
-                ${fieldLabel(cf.label, cf.required)}
-                ${cf.type === 'dropdown' ? `
-                  <select class="input select custom-field-val" data-cfi="${cfi}" data-label="${escapeHtml(cf.label)}">
-                    <option value="">Select ${escapeHtml(cf.label)}…</option>
-                    ${(cf.options || '').split(',').map(s => s.trim()).filter(Boolean).map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('')}
-                  </select>
-                ` : `<input type="${cf.type === 'number' ? 'number' : 'text'}" class="input custom-field-val" data-cfi="${cfi}" data-label="${escapeHtml(cf.label)}" placeholder="Enter ${escapeHtml(cf.label)}">`}
+          <div class="quiz-account-group">
+            <div class="account-group-head">
+              ${guser?.picture ? `<img src="${guser.picture}" alt="" style="width:38px; height:38px; border-radius:50%">` : `<div class="stat-icon stat-gray" style="width:38px; height:38px">${Icon('user', 17)}</div>`}
+              <div style="flex:1; min-width:0">
+                <div style="font-weight:600; font-size:14px">${escapeHtml(participant.name || 'Participant')}</div>
+                <div class="xs muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(participant.email || '')}</div>
               </div>
-            `).join('')}
+              ${Badge('Verified', { tone: 'green', dot: true })}
+            </div>
           </div>
 
-          <button class="btn btn-primary btn-lg btn-block" id="btn-start-quiz">${Icon('play', 16)}<span>Begin Quiz</span></button>
-          <p class="xs text-3" style="text-align:center; margin-top:12px">Timer starts the moment you continue.</p>
+          ${(quiz.collectPhone || quiz.collectOrg || (quiz.customFields || []).length > 0) ? `
+            <div class="quiz-form-group">
+              <div class="form-group-title">A little about you</div>
+              ${quiz.collectPhone ? `<div style="margin-bottom:14px">${fieldLabel('Phone number')}<input type="tel" class="input" id="p-phone" placeholder="Enter phone number" autocomplete="tel"></div>` : ''}
+              ${quiz.collectOrg ? `<div style="margin-bottom:14px">${fieldLabel('Institution / School')}<input type="text" class="input" id="p-org" placeholder="Enter institution / school" autocomplete="organization"></div>` : ''}
+              ${(quiz.customFields || []).map((cf, cfi) => `
+                <div style="margin-bottom:14px">
+                  ${fieldLabel(cf.label, cf.required)}
+                  ${cf.type === 'dropdown' ? `
+                    <select class="input select custom-field-val" data-cfi="${cfi}" data-label="${escapeHtml(cf.label)}">
+                      <option value="">Select ${escapeHtml(cf.label)}…</option>
+                      ${(cf.options || '').split(',').map(s => s.trim()).filter(Boolean).map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join('')}
+                    </select>
+                  ` : `<input type="${cf.type === 'number' ? 'number' : 'text'}" class="input custom-field-val" data-cfi="${cfi}" data-label="${escapeHtml(cf.label)}" placeholder="Enter ${escapeHtml(cf.label)}">`}
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <button class="btn btn-primary btn-lg btn-block" id="btn-start-quiz" style="height:52px; font-size:16px">${Icon('play', 17)}<span>Begin Quiz</span></button>
+          <p class="xs text-3" style="text-align:center; margin-top:12px">The timer starts the moment you continue.</p>
         </div>
       </div>
     </div>`;

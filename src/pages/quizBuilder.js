@@ -187,7 +187,7 @@ function renderQuestionsTab() {
         <div class="sidebar-card">
           <div class="sidebar-head">
             <span class="sidebar-title">Questions · ${total}</span>
-            <span class="xs text-3">${currentQuiz.questions.filter(qq => qItemState(qq) === 'done').length} answered</span>
+            <span class="xs text-3">${currentQuiz.questions.filter(qq => qItemState(qq) === 'done').length} answer${currentQuiz.questions.filter(qq => qItemState(qq) === 'done').length === 1 ? '' : 's'} set</span>
           </div>
           <div class="sidebar-search">
             <div class="search-wrap">${Icon('search', 15)}<input class="input q-search" type="text" placeholder="Search questions…" style="height:36px" aria-label="Search questions"></div>
@@ -235,14 +235,14 @@ function qItemState(qq) {
 
 function renderQItem(qq, i) {
   const text = (qq.text || '').trim() || 'Untitled question';
+  const done = qItemState(qq) === 'done';
   return `
-    <button class="q-item ${activeQ === i ? 'active' : ''}" data-qi="${i}">
+    <button class="q-item ${activeQ === i ? 'active' : ''}" data-qi="${i}" aria-label="${done ? 'Question answered, click to edit' : 'Answer not set, click to edit'}">
       <span class="q-index">${i + 1}</span>
       <span class="q-item-copy">
         <span class="q-item-text">${escapeHtml(text)}</span>
-        <span class="q-item-meta">${qq.type === 'tf' ? 'True / False' : 'MCQ'} · ${qq.points || 1} pt</span>
+        <span class="q-item-meta">${done ? Icon('check-circle', 11, 'check-inline') : ''}<span>${done ? 'Answer set' : 'Answer not set'} · </span>${qq.type === 'tf' ? 'True / False' : 'MCQ'} · ${qq.points || 1} pt</span>
       </span>
-      <span class="state-dot ${qItemState(qq)}" title="${qItemState(qq) === 'done' ? 'Answer set' : 'Answer not set'}"></span>
     </button>`;
 }
 
@@ -253,9 +253,13 @@ function renderQuestionEditor(q, i) {
   return `
     <div class="q-editor-card">
       <div class="q-editor-top">
-        <div class="q-editor-title">Question ${i + 1} of ${currentQuiz.questions.length}</div>
-        <div class="flex gap-sm wrap">
-          <span class="badge badge-gray">${q.type === 'tf' ? 'True / False' : 'Multiple choice'}</span>
+        <div class="q-editor-title-group">
+          <span class="q-editor-index">Q${i + 1}</span>
+          <div>
+            <div class="q-editor-title">${q.type === 'tf' ? 'True / False question' : 'Multiple choice question'}</div>
+          </div>
+        </div>
+        <div class="q-editor-actions">
           <button class="btn btn-secondary btn-sm q-dup" data-qi="${i}">${Icon('copy', 14)}<span>Duplicate</span></button>
           <button class="btn btn-danger-outline btn-sm q-del" data-qi="${i}">${Icon('trash', 14)}<span>Delete</span></button>
         </div>
@@ -272,9 +276,10 @@ function renderQuestionEditor(q, i) {
             <label class="field-label">Options <span class="field-req">*</span></label>
             <p class="field-hint" style="margin-bottom:12px">Select the correct answer using the radio button on the left.</p>
             ${(q.options || []).map((opt, oi) => `
-              <div class="option-row">
-                <span class="radio">
+              <div class="option-row" data-qi="${i}" data-oi="${oi}" role="presentation">
+                <span class="radio-field">
                   <input type="radio" name="mcq-${i}" class="q-radio-mcq" data-qi="${i}" data-oi="${oi}" ${String(q.correctAnswer) === String(oi) ? 'checked' : ''} aria-label="Mark option ${letters[oi]} as correct">
+                  <span class="radio-custom" aria-hidden="true"></span>
                 </span>
                 <input type="text" class="input opt-text" data-qi="${i}" data-oi="${oi}" placeholder="Option ${letters[oi]}" value="${escapeHtml(opt)}" style="height:42px">
                 <button class="icon-btn icon-btn-secondary option-delete" data-qi="${i}" data-oi="${oi}" aria-label="Remove option" ${q.options.length <= 2 ? 'disabled' : ''}>${Icon('x', 15)}</button>
@@ -521,6 +526,15 @@ function bindEvents(app) {
       currentQuiz.questions[qi].correctAnswer = oi;
       await save();
       renderPage(app);
+    });
+  });
+
+  // Clicking anywhere on an option row selects it as the correct answer
+  app.querySelectorAll('.option-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.opt-text') || e.target.closest('.option-delete')) return;
+      const radio = row.querySelector('.q-radio-mcq');
+      if (radio && !radio.checked) radio.click();
     });
   });
 

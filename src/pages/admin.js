@@ -544,14 +544,47 @@ function formatCreated(created) {
 }
 
 // Global dropdown open/close handling (also used by other admin pages)
+// Menus are positioned with `position: fixed` so they always escape any
+// ancestor with `overflow: hidden` (e.g. .table-wrap) and are never clipped.
+function positionDropdown(dd, menu) {
+  const trigger = dd.querySelector('.dropdown-trigger');
+  if (!trigger) return;
+  const r = trigger.getBoundingClientRect();
+  const mw = 190;
+  const gap = 6;
+  let left = Math.min(r.right - mw, window.innerWidth - mw - 12);
+  let top = r.bottom + gap;
+  const menuH = menu.offsetHeight || 0;
+  if (top + menuH > window.innerHeight - 12) {
+    top = Math.max(12, r.top - menuH - gap);
+  }
+  menu.style.position = 'fixed';
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  menu.style.right = 'auto';
+}
+
+function closeAllDropdowns() {
+  document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
 export function bindDropdowns(root) {
   root.querySelectorAll('.dropdown-trigger').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const dd = btn.closest('.dropdown');
       const wasOpen = dd.classList.contains('open');
-      document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
-      if (!wasOpen) dd.classList.add('open');
+      closeAllDropdowns();
+      if (!wasOpen) {
+        const menu = dd.querySelector('.dropdown-menu');
+        if (menu) {
+          menu.style.visibility = 'hidden';
+          menu.style.display = 'block';
+          positionDropdown(dd, menu);
+          menu.style.visibility = '';
+        }
+        dd.classList.add('open');
+      }
     });
   });
   root.querySelectorAll('.dropdown-menu').forEach(menu => {
@@ -586,10 +619,10 @@ export function bindDropdowns(root) {
       }
     });
   });
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
-  });
+  document.addEventListener('click', closeAllDropdowns);
+  document.addEventListener('scroll', closeAllDropdowns, true);
+  window.addEventListener('resize', closeAllDropdowns);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+    if (e.key === 'Escape') closeAllDropdowns();
   });
 }
