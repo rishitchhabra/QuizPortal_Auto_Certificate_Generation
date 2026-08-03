@@ -3,8 +3,8 @@ module.exports = {
     {
       name: 'quiz-arena',
       script: 'server.js',
-      exec_mode: 'fork',
-      instances: 1,
+      exec_mode: 'cluster',
+      instances: max,
       autorestart: true,
       watch: false,
       max_memory_restart: '500M',
