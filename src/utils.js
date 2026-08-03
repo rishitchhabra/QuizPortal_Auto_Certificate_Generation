@@ -137,3 +137,54 @@ export async function copyTextToClipboard(text) {
     return false;
   }
 }
+
+/* ==========================================================================
+   Gamification helpers
+   ========================================================================== */
+
+// Lightweight confetti burst (no dependency). Fades out automatically.
+export function burstConfetti({ count = 60, duration = 2000 } = {}) {
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  document.body.appendChild(container);
+
+  const colors = ['#5B5FEF', '#4F8EF7', '#8B5CF6', '#22C7E5', '#22C55E', '#F59E0B', '#FFD54F', '#EC4899'];
+  const dir = (n, center) => (Math.random() * (2 * n)) - n + (center || 0);
+
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('span');
+    p.className = 'confetti-piece';
+    p.style.left = `${Math.random() * 100}%`;
+    p.style.background = colors[Math.floor(Math.random() * colors.length)];
+    p.style.setProperty('--drift', `${dir(260)}px`);
+    p.style.animation = `confettiFall ${duration + dir(800, 0)}ms linear ${dir(400, 0)}ms forwards`;
+    container.appendChild(p);
+  }
+
+  setTimeout(() => container.remove(), duration + 1500);
+}
+
+// Animate a number from `from` to `to` inside an element over `ms`.
+export function countUp(el, to, { from = 0, ms = 900, suffix = '' } = {}) {
+  if (!el) return () => {};
+  const start = performance.now();
+  const run = (now) => {
+    const t = Math.min(1, (now - start) / ms);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(from + (to - from) * eased) + suffix;
+    if (t < 1) requestAnimationFrame(run);
+  };
+  requestAnimationFrame(run);
+  return () => {};
+}
+
+// Guess a subject identity (icon + css color class) from a quiz title.
+export function subjectFor(title = '') {
+  const t = (title || '').toLowerCase();
+  if (/(math|maths|algebra|geometry|calculus|arithmetic)/.test(t)) return { icon: 'calculator', cls: 'subject-math', color: 'var(--purple)' };
+  if (/(english|grammar|literature|reading|vocab|spelling)/.test(t)) return { icon: 'book-open', cls: 'subject-english', color: 'var(--orange)' };
+  if (/(history|social|geography|civics|ancient|world war)/.test(t)) return { icon: 'scroll', cls: 'subject-history', color: 'var(--amber)' };
+  if (/(computer|it\b|coding|program|python|tech|digital)/.test(t)) return { icon: 'laptop', cls: 'subject-computer', color: 'var(--primary)' };
+  if (/(gk|general|current affairs|knowledge|quiz)/.test(t)) return { icon: 'globe', cls: 'subject-gk', color: 'var(--green)' };
+  return { icon: 'flask', cls: 'subject-science', color: 'var(--blue)' };
+}
