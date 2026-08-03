@@ -1,9 +1,10 @@
-import { 
-  getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions, 
-  getAllCertTemplates, deleteCertTemplate 
+import {
+  getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions,
+  getAllCertTemplates, deleteCertTemplate
 } from '../store.js';
-import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard } from '../utils.js';
+import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
 import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
+import { Icon, Badge, Btn, StatCard, EmptyState, SectionHead, Dropdown, IconBtn, Inp, Field } from '../components.js';
 
 export async function renderAdminLogin(app) {
   let cfg;
@@ -14,17 +15,16 @@ export async function renderAdminLogin(app) {
     app.innerHTML = `
       ${renderNavbar()}
       <div class="page fade-in">
-        <div class="container-sm" style="padding-top: 60px">
-          <div class="clay-card" style="text-align:center; padding: 3rem;">
-            <div style="font-size: 3rem; margin-bottom: 1rem">⚠️</div>
-            <h2 style="margin-bottom: 0.5rem">Server Unavailable</h2>
-            <p style="color: var(--text-sub); margin-bottom: 0.5rem">Cannot reach the server. Please check if the backend is running.</p>
-            <p style="color: var(--text-sub); font-size: 0.8rem; margin-bottom: 1.5rem">Error: ${escapeHtml(err.message || 'Unknown error')}</p>
-            <button class="btn btn-primary" onclick="location.reload()">🔄 Retry</button>
+        <div class="container-narrow" style="padding-top:40px">
+          <div class="card" style="padding:40px; text-align:center">
+            <div class="empty-icon" style="margin:0 auto 16px">${Icon('alert-circle', 26)}</div>
+            <h2 style="font-size:20px; font-weight:700; margin-bottom:6px">Server Unavailable</h2>
+            <p class="muted sm" style="margin-bottom:4px">Cannot reach the server. Please check if the backend is running.</p>
+            <p class="xs text-3" style="margin-bottom:20px">${escapeHtml(err.message || 'Unknown error')}</p>
+            <button class="btn btn-primary" onclick="location.reload()">${Icon('refresh-cw', 15)}<span>Retry</span></button>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
   const needsSetup = !cfg.isSetup;
@@ -32,43 +32,26 @@ export async function renderAdminLogin(app) {
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
-      <div class="container-sm" style="padding-top: 50px">
-        <div class="clay-card" style="padding: 3rem 2.5rem">
-          <div style="text-align:center; margin-bottom: 0.75rem">
-            <img src="logo.png" alt="Logo" style="height: 65px; object-fit: contain">
+      <div class="container-narrow" style="padding-top:32px">
+        <div class="card card-hover" style="padding:40px 32px">
+          <div style="text-align:center; margin-bottom:24px">
+            <img src="/logo.png" alt="Gyan International School" style="height:40px; margin:0 auto 16px">
+            <h1 style="font-size:22px; font-weight:800; letter-spacing:-0.02em">${needsSetup ? 'Set up the admin portal' : 'Welcome back'}</h1>
+            <p class="muted sm" style="margin-top:4px">${needsSetup ? 'Create your master admin ID and password.' : 'Sign in with your admin credentials.'}</p>
           </div>
-          <h2 style="text-align:center; margin-bottom: 0.25rem; font-weight: 800; font-size: 1.75rem">
-            ${needsSetup ? 'Gyan Admin Setup' : 'Gyan Admin Portal'}
-          </h2>
-          <p style="text-align:center; color: var(--text-sub); font-size: 0.9rem; margin-bottom: 2rem">
-            ${needsSetup ? 'Create your master admin ID and password.' : 'Enter your admin credentials.'}
-          </p>
-          
-          <div class="form-group">
-            <label class="form-label">Admin ID</label>
-            <input type="text" class="form-input" id="admin-id" value="${needsSetup ? 'admin' : ''}" placeholder="Enter Admin ID">
-          </div>
-          
-          <div class="form-group">
-            <label class="form-label">Password</label>
-            <input type="password" class="form-input" id="admin-pass" placeholder="Enter Password">
-          </div>
-          
-          ${needsSetup ? `
-            <div class="form-group">
-              <label class="form-label">Confirm Password</label>
-              <input type="password" class="form-input" id="admin-pass2" placeholder="Confirm Password">
-            </div>
-          ` : ''}
-          
-          <button class="btn btn-primary btn-lg" style="width: 100%; margin-top: 0.5rem" id="btn-admin-submit">
-            ${needsSetup ? '🚀 Setup Admin Portal' : '🔓 Login to Admin Portal'}
+
+          ${Field({ label: 'Admin ID', htmlFor: 'admin-id', control: Inp({ id: 'admin-id', value: needsSetup ? 'admin' : '', placeholder: 'Enter Admin ID', attrs: 'autocomplete="username"' }) })}
+          ${Field({ label: 'Password', htmlFor: 'admin-pass', control: Inp({ type: 'password', id: 'admin-pass', placeholder: 'Enter Password', attrs: 'autocomplete="current-password"' }) })}
+          ${needsSetup ? Field({ label: 'Confirm Password', htmlFor: 'admin-pass2', control: Inp({ type: 'password', id: 'admin-pass2', placeholder: 'Confirm Password' }) }) : ''}
+
+          <button class="btn btn-primary btn-lg btn-block" id="btn-admin-submit">
+            ${Icon(needsSetup ? 'shield' : 'log-in', 16)}<span>${needsSetup ? 'Set Up Admin Portal' : 'Sign In'}</span>
           </button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
 
+  bindNavbar(app);
   app.querySelector('#btn-admin-submit').addEventListener('click', async () => {
     const id = app.querySelector('#admin-id').value.trim();
     const pass = app.querySelector('#admin-pass').value;
@@ -79,12 +62,12 @@ export async function renderAdminLogin(app) {
       if (pass !== pass2) { showToast('Passwords do not match', 'error'); return; }
       if (pass.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; }
       await setupAdmin(id, pass);
-      showToast('Admin setup complete! Welcome 🎉');
+      showToast('Admin setup complete');
       window.location.hash = '#/admin';
     } else {
       const ok = await adminLogin(id, pass);
       if (ok) {
-        showToast('Welcome back Admin!');
+        showToast('Welcome back, Admin');
         window.location.hash = '#/admin';
       } else {
         showToast('Invalid ID or Password', 'error');
@@ -95,6 +78,7 @@ export async function renderAdminLogin(app) {
   app.querySelector('#admin-pass').addEventListener('keydown', e => {
     if (e.key === 'Enter') app.querySelector('#btn-admin-submit').click();
   });
+  setTimeout(() => app.querySelector('#admin-id')?.focus(), 30);
 }
 
 export async function renderAdminPanel(app) {
@@ -103,19 +87,18 @@ export async function renderAdminPanel(app) {
     return;
   }
 
-  // Show loading state immediately so the page isn't blank
+  // Loading state
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
-      <div class="container" style="text-align:center; padding-top: 100px;">
-        <div class="clay-card" style="max-width: 400px; margin: 0 auto; padding: 3rem;">
-          <div style="font-size: 2.5rem; margin-bottom: 1rem; animation: pulse 1.5s ease-in-out infinite">⚙️</div>
-          <h3>Loading Admin Panel...</h3>
-          <p style="color: var(--text-sub); font-size: 0.85rem; margin-top: 0.5rem">Fetching data from server</p>
+      <div class="container" style="padding-top:64px">
+        <div class="card" style="max-width:420px; margin:0 auto; padding:40px; text-align:center">
+          <div class="empty-icon" style="margin:0 auto 16px"><svg class="icon icon-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
+          <h3 style="font-size:16px; font-weight:700">Loading dashboard…</h3>
+          <p class="xs muted" style="margin-top:4px">Fetching quizzes, responses and templates</p>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
 
   let cfg, quizzes, templates;
   try {
@@ -139,230 +122,260 @@ export async function renderAdminPanel(app) {
     app.innerHTML = `
       ${renderNavbar()}
       <div class="page fade-in">
-        <div class="container" style="text-align:center; padding-top: 80px;">
-          <div class="clay-card" style="max-width: 500px; margin: 0 auto; padding: 3rem;">
-            <div style="font-size: 3rem; margin-bottom: 1rem">⚠️</div>
-            <h2 style="margin-bottom: 0.5rem">Failed to Load Admin Panel</h2>
-            <p style="color: var(--text-sub); margin-bottom: 0.5rem">Could not connect to the server. Please check if the backend is running.</p>
-            <p style="color: var(--text-sub); font-size: 0.8rem; margin-bottom: 1.5rem">Error: ${escapeHtml(err.message || 'Unknown error')}</p>
-            <button class="btn btn-primary" onclick="location.reload()">🔄 Retry</button>
-            <a href="#/" class="btn btn-secondary" style="margin-left: 0.5rem">Go Home</a>
+        <div class="container-narrow" style="padding-top:40px">
+          <div class="card" style="padding:40px; text-align:center">
+            <div class="empty-icon" style="margin:0 auto 16px">${Icon('alert-circle', 26)}</div>
+            <h2 style="font-size:20px; font-weight:700; margin-bottom:6px">Failed to load admin panel</h2>
+            <p class="muted sm" style="margin-bottom:4px">Could not connect to the server.</p>
+            <p class="xs text-3" style="margin-bottom:20px">${escapeHtml(err.message || 'Unknown error')}</p>
+            <div style="display:flex; gap:10px; justify-content:center">
+              <button class="btn btn-primary" onclick="location.reload()">${Icon('refresh-cw', 15)}<span>Retry</span></button>
+              <a href="#/" class="btn btn-secondary">${Icon('home', 15)}<span>Go Home</span></a>
+            </div>
           </div>
         </div>
-      </div>
-    `;
+      </div>`;
     return;
   }
+
+  // Compute stats
+  const liveCount = quizzes.filter(q => q.isPublished).length;
+  const draftCount = quizzes.length - liveCount;
+  let totalResponses = 0;
+  let totalPassed = 0;
+  const subsByQuiz = {};
+  await Promise.all(quizzes.map(async (q) => {
+    try {
+      const subs = await getSubmissions(q.id);
+      subsByQuiz[q.id] = subs.length;
+      totalResponses += subs.length;
+      totalPassed += subs.filter(s => s.passed).length;
+    } catch { subsByQuiz[q.id] = 0; }
+  }));
 
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
       <div class="container">
-        
+
         <!-- Header -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem">
-          <div style="display:flex; align-items:center; gap: 1rem">
-            <img src="logo.png" alt="Gyan Logo" style="height: 55px; object-fit: contain">
-            <div>
-              <h1 style="font-size: 1.8rem; font-weight: 900">⚙️ Admin Control Portal</h1>
-              <p style="color: var(--text-sub); font-size: 0.9rem">Gyan's Quiz Arena — Manage quizzes, deadlines, live status & certificates.</p>
-            </div>
+        <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px">
+          <div>
+            <div class="eyebrow">${Icon('layout', 14)}<span>Admin Portal</span></div>
+            <h1 class="page-title" style="font-size:32px">Dashboard</h1>
+            <p class="page-sub" style="margin-top:8px">Manage quizzes, live status, responses and certificate templates.</p>
           </div>
-          <button class="btn btn-secondary btn-sm" id="btn-logout">🚪 Logout Admin</button>
+          <div class="page-head-actions">
+            <button class="btn btn-ghost btn-sm" id="btn-logout">${Icon('log-out', 14)}<span>Logout</span></button>
+            <a href="#/create" class="btn btn-primary">${Icon('plus', 15)}<span>New Quiz</span></a>
+          </div>
         </div>
 
-        <!-- Quick Actions Bar -->
-        <div style="display: flex; gap: 1rem; margin-bottom: 2.5rem; flex-wrap: wrap">
-          <a href="#/create" class="btn btn-primary btn-lg">+ Create New Quiz</a>
-          <a href="#/certificates/new" class="btn btn-success btn-lg">📤 Upload Certificate Template</a>
+        <!-- Stats row -->
+        <div class="stat-row" style="margin-bottom:32px">
+          ${StatCard({ icon: 'zap', label: 'Live quizzes', value: liveCount, tone: 'green' })}
+          ${StatCard({ icon: 'file-text', label: 'Drafts', value: draftCount, tone: 'gray' })}
+          ${StatCard({ icon: 'users', label: 'Responses', value: totalResponses, tone: 'blue' })}
+          ${StatCard({ icon: 'award', label: 'Certificates issued', value: totalPassed, tone: 'amber' })}
+          ${StatCard({ icon: 'layers', label: 'Templates', value: templates.length, tone: 'violet' })}
         </div>
 
-        <!-- Quizzes & Live Controls -->
-        <div style="margin-bottom: 3.5rem">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.25rem">
-            <h2 style="font-size: 1.4rem; font-weight: 800; display:flex; align-items:center; gap: 0.5rem">
-              📝 Quizzes & Live Controls
-            </h2>
-            <span class="badge badge-clay">${quizzes.length} Total</span>
+        <!-- Quizzes -->
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Quizzes</h2>
+            <p class="section-sub">${quizzes.length} total · tap a row action to edit, share, or manage responses</p>
           </div>
-
-          ${quizzes.length > 0 ? `
-            <div class="grid grid-2">
-              ` + (await Promise.all(quizzes.map(async q => renderAdminQuizCard(q, (await getSubmissions(q.id)).length)))).join('') + `
-            </div>
-          ` : `
-            <div class="clay-card" style="text-align:center; padding: 3rem">
-              <div style="font-size: 3rem; margin-bottom: 0.5rem">📝</div>
-              <h3>No Quizzes Created Yet</h3>
-              <p style="color: var(--text-sub); margin: 0.5rem 0 1.5rem">Create your first quiz for Gyan's Quiz Arena.</p>
-              <a href="#/create" class="btn btn-primary">+ Create First Quiz</a>
-            </div>
-          `}
         </div>
 
-        <!-- Certificate Templates -->
-        <div style="margin-bottom: 3.5rem">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.25rem">
-            <h2 style="font-size: 1.4rem; font-weight: 800; display:flex; align-items:center; gap: 0.5rem">
-              🎓 Certificate Templates
-            </h2>
-            <div style="display:flex; gap: 0.5rem; align-items:center">
-              <span class="badge badge-clay">${templates.length} Templates</span>
-              <a href="#/certificates/new" class="btn btn-success btn-sm">+ Upload New Template</a>
-            </div>
+        <div class="toolbar-row" style="margin-bottom:16px">
+          <div class="search-wrap" style="flex:1; max-width:340px">
+            ${Icon('search', 16)}
+            <input type="text" class="input" id="quiz-search" placeholder="Search quizzes…" aria-label="Search quizzes">
+          </div>
+          <select class="input select" id="quiz-filter" style="width:auto" aria-label="Filter quizzes">
+            <option value="all">All statuses</option>
+            <option value="live">Live</option>
+            <option value="draft">Draft</option>
+          </select>
+        </div>
+
+        ${quizzes.length > 0 ? `
+          <div class="table-wrap">
+            <table class="table" id="quiz-table" style="min-width:860px">
+              <thead>
+                <tr>
+                  <th style="width:110px">Status</th>
+                  <th>Quiz</th>
+                  <th style="width:90px">Questions</th>
+                  <th style="width:100px">Responses</th>
+                  <th style="width:150px">Deadline</th>
+                  <th style="width:140px">Last edited</th>
+                  <th style="width:150px; text-align:right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${quizzes.map(q => renderQuizRow(q, subsByQuiz[q.id] || 0)).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <div class="card">
+            ${EmptyState({
+              icon: 'list-checks',
+              title: 'No quizzes yet',
+              desc: 'Create your first quiz to start collecting responses and issuing certificates.',
+              action: `<a href="#/create" class="btn btn-primary">${Icon('plus', 15)}<span>Create First Quiz</span></a>`
+            })}
+          </div>
+        `}
+
+        <!-- Certificate templates -->
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Certificate templates</h2>
+            <p class="section-sub">${templates.length} template${templates.length === 1 ? '' : 's'} · attach these to quizzes to issue certificates</p>
+          </div>
+          <div class="section-action">
+            <a href="#/certificates/new" class="btn btn-secondary btn-sm">${Icon('upload', 14)}<span>Upload Template</span></a>
+          </div>
+        </div>
+
+        ${templates.length > 0 ? `
+          <div class="grid grid-3">
+            ${templates.map(t => renderTemplateCard(t)).join('')}
+          </div>
+        ` : `
+          <div class="card">
+            ${EmptyState({
+              icon: 'layers',
+              title: 'No certificate templates',
+              desc: 'Upload a branded certificate design so students can download it after passing.',
+              action: `<a href="#/certificates/new" class="btn btn-secondary">${Icon('upload', 15)}<span>Upload First Template</span></a>`
+            })}
+          </div>
+        `}
+
+        <!-- System settings -->
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">System &amp; security</h2>
+            <p class="section-sub">Google OAuth configuration, admin password, and authorized admin emails.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-2" style="align-items:start">
+          <div class="card card-pad">
+            <h3 style="font-size:15px; font-weight:700; margin-bottom:4px">Google OAuth</h3>
+            <p class="muted sm" style="margin-bottom:16px">Required for Google Sign-In and single-response enforcement.</p>
+            ${Field({ label: 'Google Client ID', htmlFor: 'google-client-id', control: Inp({ id: 'google-client-id', value: cfg.googleClientId || '', placeholder: 'xxxx.apps.googleusercontent.com' }) })}
+            <button class="btn btn-primary btn-sm" id="btn-save-oauth">${Icon('save', 14)}<span>Save OAuth Settings</span></button>
           </div>
 
-          ${templates.length > 0 ? `
-            <div class="grid grid-3">
-              ${templates.map(t => {
-                const isPptx = t.type === 'pptx';
-                return `
-                <div class="clay-card" style="display:flex; flex-direction:column; justify-content:space-between">
-                  <div>
-                    ${isPptx ? `
-                      <div style="height: 110px; background: linear-gradient(135deg, #fff1f2, #fef3c7); border: 2px solid rgba(234,88,12,0.2); border-radius: var(--radius-sm); margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 0.3rem">
-                        <div style="font-size: 2.5rem">📄</div>
-                        <div style="font-size: 0.78rem; font-weight: 800; color: #ea580c">PPTX Template</div>
-                      </div>
-                    ` : t.backgroundImage ? `
-                      <div style="height: 140px; border-radius: var(--radius-sm); margin-bottom: 1rem; overflow:hidden; background: #f1f5f9">
-                        <img class="tmpl-preview-img" data-tmplid="${t.id}" style="width:100%; height:100%; object-fit:cover" alt="Certificate Preview">
-                      </div>
-                    ` : `
-                      <div style="height: 110px; background: #fffdf7; border: 3px double #c8a96e; border-radius: var(--radius-sm); margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; color: #c8a96e; font-weight: 700; font-size: 0.95rem">
-                        CERTIFICATE PREVIEW
-                      </div>
-                    `}
-                    <h4 style="font-size: 1.1rem; font-weight: 800">${escapeHtml(t.name || 'Untitled Template')}</h4>
-                    <p style="font-size: 0.8rem; color: var(--text-sub); margin-top: 0.2rem">
-                      ${isPptx ? '📄 PowerPoint Template — Auto Placeholder Replacement' : t.backgroundImage ? '🖼️ Image + Text Overlay Template' : `${t.elements?.length || 0} Text Elements`}
-                    </p>
-                  </div>
-                  <div style="margin-top: 1.25rem; display: flex; gap: 0.5rem">
-                    <a href="#/certificates/${t.id}" class="btn btn-secondary btn-sm" style="flex:1">✏️ Edit</a>
-                    <button class="btn btn-danger btn-sm del-t" data-id="${t.id}">🗑️</button>
-                  </div>
+          <div class="card card-pad">
+            <h3 style="font-size:15px; font-weight:700; margin-bottom:16px">Admin credentials</h3>
+            <div class="field-two" style="margin-bottom:14px">
+              ${Field({ label: 'Current password', control: Inp({ type: 'password', id: 'current-pass', placeholder: 'Current password' }) })}
+              ${Field({ label: 'New password', control: Inp({ type: 'password', id: 'new-pass', placeholder: 'New password' }) })}
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-change-pass">${Icon('lock', 14)}<span>Update Password</span></button>
+
+            <div style="border-top:1px solid var(--border); margin:22px 0 16px"></div>
+
+            <h3 style="font-size:15px; font-weight:700; margin-bottom:4px">Authorized admin emails</h3>
+            <p class="muted sm" style="margin-bottom:12px">Users signed in with these Google accounts can access the admin portal.</p>
+            <div id="admin-emails-list" style="margin-bottom:12px">
+              ${(Array.isArray(cfg.adminEmails) ? cfg.adminEmails : []).map((e, idx) => `
+                <div class="flex justify-between items-center" style="padding:8px 12px; border:1px solid var(--border); border-radius:var(--r-sm); margin-bottom:6px">
+                  <span class="sm">${escapeHtml(e)}</span>
+                  <button class="icon-btn icon-btn-sm icon-btn-danger remove-email" data-idx="${idx}" aria-label="Remove ${escapeHtml(e)}">${Icon('x', 14)}</button>
                 </div>
-              `}).join('')}
+              `).join('')}
             </div>
-          ` : `
-            <div class="clay-card" style="text-align:center; padding: 2.5rem">
-              <div style="font-size: 2.5rem; margin-bottom: 0.5rem">🎓</div>
-              <h3>No Certificate Templates</h3>
-              <p style="color: var(--text-sub); margin: 0.5rem 0 1.25rem">Upload custom certificate designs with your school logo & branding.</p>
-              <a href="#/certificates/new" class="btn btn-success btn-sm">+ Upload First Template</a>
-            </div>
-          `}
-        </div>
-
-        <!-- Platform & Security Settings -->
-        <div class="clay-card">
-          <h2 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 1.5rem">⚙️ System & Security Settings</h2>
-          
-          <div class="grid grid-2">
-            <!-- Google OAuth Settings -->
-            <div style="background: var(--bg-input); padding: 1.5rem; border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
-              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.75rem">🔑 Google OAuth Configuration</h3>
-              <p style="font-size: 0.8rem; color: var(--text-sub); margin-bottom: 1rem">
-                Required for Google Sign-In and single-response enforcement.
-              </p>
-              <div class="form-group">
-                <label class="form-label">Google Client ID</label>
-                <input type="text" class="form-input" id="google-client-id" value="${escapeHtml(cfg.googleClientId || '')}" placeholder="xxxx.apps.googleusercontent.com">
-              </div>
-              <button class="btn btn-primary btn-sm" id="btn-save-oauth">Save OAuth Settings</button>
-            </div>
-
-            <!-- Password & Admin Emails -->
-            <div style="background: var(--bg-input); padding: 1.5rem; border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
-              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.75rem">🔒 Change Admin Password</h3>
-              <div class="form-group" style="margin-bottom: 0.75rem">
-                <input type="password" class="form-input" id="current-pass" placeholder="Current Password">
-              </div>
-              <div class="form-group" style="margin-bottom: 0.75rem">
-                <input type="password" class="form-input" id="new-pass" placeholder="New Password">
-              </div>
-              <button class="btn btn-primary btn-sm" id="btn-change-pass">Update Password</button>
-
-              <hr style="border:none; border-top:1px solid rgba(160,195,230,0.3); margin: 1.25rem 0">
-              
-              <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem">👥 Authorized Admin Emails</h3>
-              <div id="admin-emails-list" style="margin-bottom: 0.75rem">
-                ${(Array.isArray(cfg.adminEmails) ? cfg.adminEmails : []).map((e, idx) => `
-                  <div style="display:flex; justify-content:space-between; align-items:center; padding: 0.35rem 0.75rem; background: #fff; border-radius: var(--radius-sm); margin-bottom: 0.4rem; font-size: 0.85rem">
-                    <span>${escapeHtml(e)}</span>
-                    <button class="btn btn-danger btn-sm remove-email" data-idx="${idx}" style="padding: 0.2rem 0.5rem; font-size: 0.7rem">✕</button>
-                  </div>
-                `).join('')}
-              </div>
-              <div style="display:flex; gap: 0.5rem">
-                <input type="email" class="form-input" id="new-admin-email" placeholder="admin@gyan.edu" style="flex:1">
-                <button class="btn btn-secondary btn-sm" id="btn-add-email">+ Add</button>
-              </div>
+            <div class="flex" style="gap:8px">
+              <input type="email" class="input" id="new-admin-email" placeholder="teacher@gyan.edu" style="height:38px; flex:1" aria-label="New admin email">
+              <button class="btn btn-secondary btn-sm" id="btn-add-email">${Icon('plus', 14)}<span>Add</span></button>
             </div>
           </div>
         </div>
 
       </div>
-    </div>
-  `;
+    </div>`;
 
-  // Set template preview images programmatically (base64 too large for innerHTML)
+  bindNavbar(app);
+
+  // Set template preview images programmatically
   app.querySelectorAll('.tmpl-preview-img').forEach(img => {
     const tmpl = templates.find(t => t.id === img.dataset.tmplid);
     if (tmpl?.backgroundImage) img.src = tmpl.backgroundImage;
   });
 
-  // Bind Logout
+  // --- Actions ---
   app.querySelector('#btn-logout').addEventListener('click', () => {
     adminLogout();
     showToast('Logged out of Admin Portal');
     window.location.hash = '#/';
   });
 
-  // Toggle Live / Stop Quiz
+  // Live toggle / archive
   app.querySelectorAll('.toggle-live').forEach(b => {
     b.addEventListener('click', async () => {
       const q = quizzes.find(x => x.id === b.dataset.id);
       if (q) {
         q.isPublished = !q.isPublished;
         await saveQuiz(q);
-        showToast(q.isPublished ? 'Quiz is now LIVE! 🚀' : 'Quiz STOPPED (Inactive)');
+        showToast(q.isPublished ? 'Quiz is now live' : 'Quiz moved to drafts');
         renderAdminPanel(app);
       }
     });
   });
 
-  // Delete Quiz
+  // Delete quiz
   app.querySelectorAll('.del-quiz').forEach(b => {
     b.addEventListener('click', () => {
-      showModal('Delete Quiz?', '<p>This quiz and all participant responses will be permanently deleted.</p>', async () => {
+      showModal('Delete this quiz?', '<p>This quiz and all participant responses will be permanently deleted. This cannot be undone.</p>', async () => {
         await deleteQuiz(b.dataset.id);
         showToast('Quiz deleted');
         renderAdminPanel(app);
-      });
+      }, { confirmText: 'Delete', danger: true });
     });
   });
 
-  // Share Quiz Link
+  // Duplicate quiz
+  app.querySelectorAll('.dup-quiz').forEach(b => {
+    b.addEventListener('click', async () => {
+      const q = quizzes.find(x => x.id === b.dataset.id);
+      if (!q) return;
+      const copy = JSON.parse(JSON.stringify(q));
+      delete copy.createdAt;
+      copy.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      copy.title = (q.title || 'Untitled Quiz') + ' (copy)';
+      copy.isPublished = false;
+      await saveQuiz(copy);
+      showToast('Quiz duplicated');
+      renderAdminPanel(app);
+    });
+  });
+
+  // Share link
   app.querySelectorAll('.share-quiz').forEach(b => {
     b.addEventListener('click', () => {
       const url = `${window.location.origin}/#/take/${b.dataset.id}`;
       copyTextToClipboard(url).then(ok => {
-        if (ok) showToast('Quiz link copied to clipboard! 📋');
+        if (ok) showToast('Quiz link copied to clipboard');
         else showToast(url, 'info');
       });
     });
   });
 
-  // Delete Template
+  // Delete template
   app.querySelectorAll('.del-t').forEach(b => {
     b.addEventListener('click', () => {
-      showModal('Delete Template?', '<p>Delete this certificate template permanently?</p>', async () => {
+      showModal('Delete this template?', '<p>Delete this certificate template permanently?</p>', async () => {
         await deleteCertTemplate(b.dataset.id);
         showToast('Template deleted');
         renderAdminPanel(app);
-      });
+      }, { confirmText: 'Delete', danger: true });
     });
   });
 
@@ -374,7 +387,7 @@ export async function renderAdminPanel(app) {
     if (!cur) { showToast('Password required', 'error'); return; }
     const curHash = await hashPassword(cur);
     await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
-    showToast('Google OAuth Client ID saved!');
+    showToast('Google OAuth Client ID saved');
   });
 
   // Password update
@@ -387,12 +400,12 @@ export async function renderAdminPanel(app) {
     const curHash = await hashPassword(cur);
     const newHash = await hashPassword(nw);
     await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, passwordHash: newHash, adminEmails: c.adminEmails || [], googleClientId: c.googleClientId || '' });
-    showToast('Admin password updated successfully!');
+    showToast('Admin password updated');
     app.querySelector('#current-pass').value = '';
     app.querySelector('#new-pass').value = '';
   });
 
-  // Add Admin Email
+  // Add admin email
   app.querySelector('#btn-add-email').addEventListener('click', async () => {
     const email = app.querySelector('#new-admin-email').value.trim().toLowerCase();
     if (!email || !email.includes('@')) { showToast('Enter a valid email address', 'error'); return; }
@@ -404,11 +417,11 @@ export async function renderAdminPanel(app) {
     if (!cur) { showToast('Password required', 'error'); return; }
     const curHash = await hashPassword(cur);
     await saveAdminConfig({ id: c.id, currentPasswordHash: curHash, adminEmails: c.adminEmails, googleClientId: c.googleClientId || '' });
-    showToast('Admin email added!');
+    showToast('Admin email added');
     renderAdminPanel(app);
   });
 
-  // Remove Admin Email
+  // Remove admin email
   app.querySelectorAll('.remove-email').forEach(btn => {
     btn.addEventListener('click', async () => {
       const c = await getAdminConfigAsync();
@@ -421,52 +434,162 @@ export async function renderAdminPanel(app) {
       renderAdminPanel(app);
     });
   });
+
+  // Search + filter
+  const searchInput = app.querySelector('#quiz-search');
+  const filterSelect = app.querySelector('#quiz-filter');
+  const applyFilter = () => {
+    const q = (searchInput?.value || '').toLowerCase();
+    const f = filterSelect?.value || 'all';
+    app.querySelectorAll('#quiz-table tbody tr[data-id]').forEach(row => {
+      const title = (row.dataset.title || '').toLowerCase();
+      const status = row.dataset.status;
+      const matchQ = !q || title.includes(q);
+      const matchF = f === 'all' || status === f;
+      row.style.display = (matchQ && matchF) ? '' : 'none';
+    });
+  };
+  searchInput?.addEventListener('input', applyFilter);
+  filterSelect?.addEventListener('change', applyFilter);
+
+  bindDropdowns(app);
 }
 
-function renderAdminQuizCard(quiz, subsCount) {
-  const qCount = quiz.questions?.length || 0;
-  const totalPts = quiz.questions?.reduce((s, q) => s + (q.points || 1), 0) || 0;
+function renderQuizRow(quiz, subsCount) {
   const isLive = quiz.isPublished;
-
-  let deadlineTxt = 'No deadline';
-  if (quiz.deadline) {
-    const d = new Date(quiz.deadline);
-    if (!isNaN(d.getTime())) deadlineTxt = `Deadline: ${d.toLocaleString()}`;
-  }
-
+  const qCount = quiz.questions?.length || 0;
+  const deadlineTxt = formatDeadline(quiz.deadline);
+  const createdTxt = formatCreated(quiz.createdAt);
+  const title = quiz.title || 'Untitled Quiz';
+  const desc = quiz.description || 'No description provided';
+  const statusTone = isLive ? 'green' : 'gray';
+  const statusLabel = isLive ? 'Live' : 'Draft';
+  const items = [
+    { id: 'copy', label: 'Copy link', icon: 'link' },
+    { id: 'responses', label: 'Responses', icon: 'users' },
+    { id: 'dup', label: 'Duplicate', icon: 'copy' },
+    { id: 'toggle', label: isLive ? 'Move to draft' : 'Make live', icon: isLive ? 'archive' : 'play' },
+    { id: 'del', label: 'Delete', icon: 'trash', tone: 'danger' }
+  ];
   return `
-    <div class="clay-card quiz-card">
-      <div>
-        <div class="quiz-card-header">
-          <div>
-            <div class="quiz-card-title">${escapeHtml(quiz.title || 'Untitled Quiz')}</div>
-            <div style="color: var(--text-sub); font-size: 0.8rem; margin-top: 0.2rem">
-              ${escapeHtml(quiz.description || 'No description provided')}
-            </div>
+    <tr data-id="${quiz.id}" data-status="${isLive ? 'live' : 'draft'}" data-title="${escapeHtml(title).toLowerCase()}">
+      <td>${Badge(statusLabel, { tone: statusTone, dot: true })}</td>
+      <td>
+        <div class="quiz-name">
+          <span class="quiz-name-ic ${isLive ? '' : 'muted'}">${Icon(isLive ? 'list-checks' : 'file-text', 18)}</span>
+          <div style="min-width:0">
+            <div class="quiz-title">${escapeHtml(title)}</div>
+            <div class="quiz-desc-sub">${escapeHtml(desc)}</div>
           </div>
-          <span class="badge ${isLive ? 'badge-success' : 'badge-danger'}">
-            ${isLive ? '🟢 LIVE' : '⏸️ STOPPED'}
-          </span>
         </div>
-
-        <div class="quiz-card-meta">
-          <span>📋 ${qCount} Questions</span>
-          <span>⭐ ${totalPts} Points</span>
-          <span>⏱️ ${quiz.timerMinutes || 30} min</span>
-          <span>👥 ${subsCount || 0} Responses</span>
-          <span>⏰ ${deadlineTxt}</span>
+      </td>
+      <td><span class="mono">${qCount}</span></td>
+      <td>
+        <a href="#/responses/${quiz.id}" class="meta-item" style="text-decoration:none">${Icon('users', 14)}<span>${subsCount || 0}</span></a>
+      </td>
+      <td class="muted sm">${deadlineTxt}</td>
+      <td class="muted sm">${createdTxt}</td>
+      <td>
+        <div class="flex" style="gap:8px; justify-content:flex-end">
+          <a href="#/edit/${quiz.id}" class="btn btn-secondary btn-sm">${Icon('edit', 14)}<span>Edit</span></a>
+          ${Dropdown({
+            id: `dd-${quiz.id}`,
+            trigger: Icon('more-horizontal', 16),
+            items
+          })}
         </div>
-      </div>
+        <button class="toggle-live" data-id="${quiz.id}" style="display:none" aria-hidden="true" tabindex="-1"></button>
+        <button class="dup-quiz" data-id="${quiz.id}" style="display:none" aria-hidden="true" tabindex="-1"></button>
+        <button class="del-quiz" data-id="${quiz.id}" style="display:none" aria-hidden="true" tabindex="-1"></button>
+      </td>
+    </tr>`;
+}
 
-      <div style="display:flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem">
-        <button class="btn ${isLive ? 'btn-secondary' : 'btn-primary'} btn-sm toggle-live" data-id="${quiz.id}">
-          ${isLive ? '⏸️ Stop Quiz' : '🚀 Make Live'}
-        </button>
-        <a href="#/edit/${quiz.id}" class="btn btn-secondary btn-sm">✏️ Edit</a>
-        <button class="btn btn-secondary btn-sm share-quiz" data-id="${quiz.id}">🔗 Copy Link</button>
-        <a href="#/responses/${quiz.id}" class="btn btn-secondary btn-sm">📊 Responses (${subsCount || 0})</a>
-        <button class="btn btn-danger btn-sm del-quiz" data-id="${quiz.id}" style="margin-left:auto">🗑️</button>
+function renderTemplateCard(t) {
+  const isPptx = t.type === 'pptx';
+  const preview = isPptx
+    ? `<div class="flex items-center" style="height:120px; justify-content:center; background:var(--surface-subtle); gap:8px">${Icon('file-text', 28, 'text-3')}<span class="sm muted">PowerPoint template</span></div>`
+    : t.backgroundImage
+      ? `<div style="height:120px; border-radius:var(--r-sm); overflow:hidden; background:var(--surface-subtle)"><img class="tmpl-preview-img" data-tmplid="${t.id}" style="width:100%; height:100%; object-fit:cover" alt="Certificate preview"></div>`
+      : `<div style="height:120px; background:#fffdf7; border:2px double #c8a96e; border-radius:var(--r-sm); display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; color:#c8a96e; font-weight:700; font-size:13px">CERTIFICATE</div>`;
+  return `
+    <div class="card card-pad card-hover" style="display:flex; flex-direction:column; justify-content:space-between">
+      <div>
+        ${preview}
+        <h4 style="font-size:16px; font-weight:700; margin:12px 0 2px">${escapeHtml(t.name || 'Untitled Template')}</h4>
+        <p class="xs muted">${isPptx ? 'PowerPoint template' : t.backgroundImage ? 'Image + text overlay' : `${t.elements?.length || 0} text elements`}</p>
       </div>
-    </div>
-  `;
+      <div class="flex" style="gap:8px; margin-top:16px">
+        <a href="#/certificates/${t.id}" class="btn btn-secondary btn-sm" style="flex:1">${Icon('edit', 14)}<span>Edit</span></a>
+        <button class="icon-btn icon-btn-secondary icon-btn-danger del-t" data-id="${t.id}" aria-label="Delete template">${Icon('trash', 15)}</button>
+      </div>
+    </div>`;
+}
+
+function formatDeadline(deadline) {
+  if (!deadline) return 'No deadline';
+  const d = new Date(deadline);
+  if (isNaN(d.getTime())) return 'No deadline';
+  const opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+
+function formatCreated(created) {
+  if (!created) return '—';
+  const d = new Date(created);
+  if (isNaN(d.getTime())) return '—';
+  const opts = { month: 'short', day: 'numeric' };
+  return d.toLocaleDateString(undefined, opts);
+}
+
+// Global dropdown open/close handling (also used by other admin pages)
+export function bindDropdowns(root) {
+  root.querySelectorAll('.dropdown-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dd = btn.closest('.dropdown');
+      const wasOpen = dd.classList.contains('open');
+      document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+      if (!wasOpen) dd.classList.add('open');
+    });
+  });
+  root.querySelectorAll('.dropdown-menu').forEach(menu => {
+    menu.addEventListener('click', (e) => {
+      const item = e.target.closest('.menu-item');
+      if (!item) return;
+      e.stopPropagation();
+      const dd = menu.closest('.dropdown');
+      dd.classList.remove('open');
+      const action = item.dataset.menuAction;
+      const id = dd.id.replace(/^dd-/, '');
+      if (action === 'copy') {
+        const url = `${window.location.origin}/#/take/${id}`;
+        copyTextToClipboard(url).then(ok => {
+          if (ok) showToast('Quiz link copied to clipboard');
+          else showToast(url, 'info');
+        });
+      } else if (action === 'responses') {
+        window.location.hash = `#/responses/${id}`;
+      } else if (action === 'dup') {
+        const row = root.querySelector(`#quiz-table tr[data-id="${id}"]`);
+        const btn = row?.querySelector('.dup-quiz');
+        if (btn) btn.click();
+      } else if (action === 'toggle') {
+        const row = root.querySelector(`#quiz-table tr[data-id="${id}"]`);
+        const btn = row?.querySelector('.toggle-live');
+        if (btn) btn.click();
+      } else if (action === 'del') {
+        const row = root.querySelector(`#quiz-table tr[data-id="${id}"]`);
+        const btn = row?.querySelector('.del-quiz');
+        if (btn) btn.click();
+      }
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') document.querySelectorAll('.dropdown.open').forEach(d => d.classList.remove('open'));
+  });
 }

@@ -1,4 +1,6 @@
 import { isAdminLoggedIn } from './auth.js';
+import { Icon } from './components.js';
+import { renderNavbar } from './utils.js';
 
 const routes = {};
 let currentCleanup = null;
@@ -9,6 +11,25 @@ export function registerRoute(path, handler) {
 
 export function navigate(hash) {
   window.location.hash = hash;
+}
+
+function renderError(app, { icon, title, desc, detail, retry }) {
+  app.innerHTML = `
+    ${renderNavbar()}
+    <div class="page fade-in">
+      <div class="container-narrow" style="padding-top: 40px">
+        <div class="card card-hover" style="padding: 48px 32px; text-align:center">
+          <div class="empty-icon" style="margin: 0 auto 18px">${icon}</div>
+          <h1 style="font-size: 22px; font-weight: 700; margin-bottom: 8px">${title}</h1>
+          <p style="color: var(--text-2); font-size: 15px; max-width: 420px; margin: 0 auto 6px">${desc}</p>
+          ${detail ? `<p style="color: var(--text-3); font-size: 12px; margin: 0 auto">${detail}</p>` : ''}
+          <div style="display:flex; gap:10px; justify-content:center; margin-top: 24px">
+            ${retry ? `<button class="btn btn-primary" onclick="location.reload()">${Icon('refresh-cw', 15)}<span>Retry</span></button>` : ''}
+            <a href="#/" class="btn btn-secondary">${Icon('home', 15)}<span>Go Home</span></a>
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
 
 export function startRouter() {
@@ -45,7 +66,6 @@ export function startRouter() {
     const handler = routes[routeKey];
     if (handler) {
       const result = handler(params);
-      // Handle async route handlers — catch errors to prevent blank pages
       if (result && typeof result.then === 'function') {
         result.then(cleanup => {
           if (typeof cleanup === 'function') currentCleanup = cleanup;
@@ -53,20 +73,13 @@ export function startRouter() {
           console.error('Route error:', err);
           const app = document.getElementById('app');
           if (app) {
-            app.innerHTML = `
-              <div class="page fade-in">
-                <div class="container" style="text-align:center; padding-top: 100px;">
-                  <div class="clay-card" style="max-width: 500px; margin: 0 auto; padding: 3rem;">
-                    <div style="font-size: 3rem; margin-bottom: 1rem">⚠️</div>
-                    <h2 style="margin-bottom: 0.5rem">Something Went Wrong</h2>
-                    <p style="color: var(--text-sub); margin-bottom: 0.5rem">Could not load this page. The server may be temporarily unavailable.</p>
-                    <p style="color: var(--text-sub); font-size: 0.8rem; margin-bottom: 1.5rem">${err.message || 'Unknown error'}</p>
-                    <button class="btn btn-primary" onclick="location.reload()">🔄 Retry</button>
-                    <a href="#/" class="btn btn-secondary" style="margin-left: 0.5rem">Go Home</a>
-                  </div>
-                </div>
-              </div>
-            `;
+            renderError(app, {
+              icon: Icon('alert-circle', 26),
+              title: 'Something Went Wrong',
+              desc: 'Could not load this page. The server may be temporarily unavailable.',
+              detail: err.message || 'Unknown error',
+              retry: true
+            });
           }
         });
       } else {
@@ -75,18 +88,11 @@ export function startRouter() {
     } else {
       const app = document.getElementById('app');
       if (app) {
-        app.innerHTML = `
-          <div class="page fade-in">
-            <div class="container" style="text-align:center; padding-top: 100px;">
-              <div class="clay-card" style="max-width: 450px; margin: 0 auto; padding: 3rem;">
-                <div style="font-size: 4rem; margin-bottom: 1rem">4️⃣0️⃣4️⃣</div>
-                <h2 style="margin-bottom: 0.5rem">Page Not Found</h2>
-                <p style="color: var(--text-sub); margin-bottom: 1.5rem">The page you are looking for does not exist or has moved.</p>
-                <a href="#/" class="btn btn-primary">Go to Homepage</a>
-              </div>
-            </div>
-          </div>
-        `;
+        renderError(app, {
+          icon: Icon('search', 26),
+          title: 'Page Not Found',
+          desc: 'The page you are looking for does not exist or has moved.'
+        });
       }
     }
   }

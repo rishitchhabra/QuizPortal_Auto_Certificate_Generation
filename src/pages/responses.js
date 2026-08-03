@@ -1,6 +1,7 @@
 import { getQuiz, getSubmissions } from '../store.js';
-import { renderNavbar, formatTime, escapeHtml } from '../utils.js';
+import { renderNavbar, formatTime, escapeHtml, bindNavbar, copyTextToClipboard, showToast } from '../utils.js';
 import { requireAdmin } from '../auth.js';
+import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
 
 export async function renderResponses(app, params) {
   if (!requireAdmin()) return;
@@ -12,138 +13,146 @@ export async function renderResponses(app, params) {
   const submissions = await getSubmissions(quizId);
   const avgScore = submissions.length > 0 ? Math.round(submissions.reduce((s, sub) => s + sub.percent, 0) / submissions.length) : 0;
   const passCount = submissions.filter(s => s.passed).length;
+  const avgTime = submissions.length > 0 ? Math.round(submissions.reduce((s, sub) => s + (sub.timeTaken || 0), 0) / submissions.length) : 0;
+
+  const leaderboard = [...submissions].sort((a, b) => {
+    if (b.percent !== a.percent) return b.percent - a.percent;
+    if (a.timeTaken !== b.timeTaken) return (a.timeTaken || 0) - (b.timeTaken || 0);
+    return new Date(a.submittedAt) - new Date(b.submittedAt);
+  });
+
+  const qAccuracy = (quiz.questions || []).map((q, qi) => {
+    const correctCount = submissions.filter(s => s.questionResults?.[qi]?.correct).length;
+    const pct = submissions.length > 0 ? Math.round((correctCount / submissions.length) * 100) : 0;
+    return { qi, pct };
+  });
+  const overallAccuracy = qAccuracy.length > 0
+    ? Math.round(qAccuracy.reduce((s, x) => s + x.pct, 0) / qAccuracy.length)
+    : 0;
 
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
       <div class="container">
-        
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem">
+
+        <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px">
           <div>
-            <a href="#/admin" class="btn btn-ghost btn-sm" style="margin-bottom: 0.4rem">← Back to Admin Portal</a>
-            <h1 style="font-size: 1.75rem; font-weight: 900">📊 ${escapeHtml(quiz.title)} — Participant Analytics</h1>
+            <a href="#/admin" class="btn btn-ghost btn-sm" style="margin-bottom:12px">${Icon('arrow-left', 14)}<span>Back to Dashboard</span></a>
+            <div class="eyebrow">${Icon('users', 14)}<span>Participant Analytics</span></div>
+            <h1 class="page-title" style="font-size:28px">${escapeHtml(quiz.title)}</h1>
+            <p class="page-sub" style="margin-top:6px; font-size:15px">${submissions.length} response${submissions.length === 1 ? '' : 's'} · ${quiz.questions?.length || 0} questions</p>
+          </div>
+          <div class="page-head-actions">
+            ${Badge(quiz.isPublished ? 'Live' : 'Draft', { tone: quiz.isPublished ? 'green' : 'gray', dot: true })}
           </div>
         </div>
 
-        <!-- Summary Cards -->
-        <div class="grid grid-3" style="margin-bottom: 2rem">
-          <div class="clay-card" style="text-align:center">
-            <div style="font-size: 2.2rem; font-weight: 900; color: var(--clay-primary); margin-bottom: 0.2rem">${submissions.length}</div>
-            <div style="font-size: 0.85rem; color: var(--text-sub)">Total Responses</div>
-          </div>
-          <div class="clay-card" style="text-align:center">
-            <div style="font-size: 2.2rem; font-weight: 900; color: var(--clay-success); margin-bottom: 0.2rem">${avgScore}%</div>
-            <div style="font-size: 0.85rem; color: var(--text-sub)">Average Score</div>
-          </div>
-          <div class="clay-card" style="text-align:center">
-            <div style="font-size: 2.2rem; font-weight: 900; color: var(--clay-warning); margin-bottom: 0.2rem">${passCount}/${submissions.length}</div>
-            <div style="font-size: 0.85rem; color: var(--text-sub)">Passed Threshold</div>
-          </div>
+        <!-- Summary -->
+        <div class="stat-row" style="margin-bottom:32px">
+          ${StatCard({ icon: 'users', label: 'Total responses', value: submissions.length, tone: 'blue' })}
+          ${StatCard({ icon: 'trending-up', label: 'Average score', value: `${avgScore}%`, tone: 'green' })}
+          ${StatCard({ icon: 'award', label: 'Passed', value: `${passCount}/${submissions.length}`, tone: 'amber' })}
+          ${StatCard({ icon: 'clock', label: 'Avg time', value: formatTime(avgTime), tone: 'gray' })}
+          ${StatCard({ icon: 'target', label: 'Accuracy', value: `${overallAccuracy}%`, tone: 'violet' })}
         </div>
 
         ${submissions.length > 0 ? `
-          <!-- 🏆 LEADERBOARD / HALL OF FAME -->
-          <div class="clay-card" style="margin-bottom: 2.5rem; background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,249,255,0.98))">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem">
-              <h2 style="font-size: 1.35rem; font-weight: 900; display:flex; align-items:center; gap: 0.5rem">
-                🏆 Evaluation Leaderboard & Hall of Fame
-              </h2>
-              <span class="badge badge-success" style="font-weight:800">${submissions.length} Ranked</span>
-            </div>
+          <div class="grid grid-2" style="align-items:start; margin-bottom:32px">
 
-            <!-- Top 3 Podium Cards -->
-            ${(() => {
-              const leaderboard = [...submissions].sort((a, b) => {
-                if (b.percent !== a.percent) return b.percent - a.percent;
-                if (a.timeTaken !== b.timeTaken) return (a.timeTaken || 0) - (b.timeTaken || 0);
-                return new Date(a.submittedAt) - new Date(b.submittedAt);
-              });
-              return `
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem">
-                  ${leaderboard.slice(0, 3).map((sub, rank) => {
-                    const medals = ['🥇 1st Place', '🥈 2nd Place', '🥉 3rd Place'];
-                    const colors = ['#f59e0b', '#64748b', '#d97706'];
-                    const customDetails = sub.participant?.custom ? Object.entries(sub.participant.custom).map(([k, v]) => `${k}: ${v}`).join(' | ') : (sub.participant?.org || '');
-                    return `
-                      <div class="clay-card" style="text-align:center; padding: 1.25rem; border: 2px solid ${colors[rank]}; background: #ffffff">
-                        <div style="font-size: 2.2rem; margin-bottom: 0.2rem">${medals[rank].split(' ')[0]}</div>
-                        <div style="font-weight: 900; font-size: 0.8rem; color: ${colors[rank]}; text-transform:uppercase">${medals[rank]}</div>
-                        <h3 style="font-size: 1.1rem; font-weight: 800; margin: 0.4rem 0 0.2rem">${escapeHtml(sub.participant?.name || 'Anonymous')}</h3>
-                        <div style="font-size: 0.75rem; color: var(--text-sub); margin-bottom: 0.4rem">${escapeHtml(sub.participant?.email || '')}</div>
-                        ${customDetails ? `<div style="font-size: 0.75rem; font-weight: 700; color: var(--clay-primary); margin-bottom: 0.5rem">${escapeHtml(customDetails)}</div>` : ''}
-                        <div style="display:flex; justify-content:center; gap: 0.5rem; font-size: 0.85rem">
-                          <span class="badge badge-success" style="font-weight:900">${sub.percent}% (${sub.score}/${sub.totalPoints})</span>
-                          <span class="badge badge-clay">⏱️ ${formatTime(sub.timeTaken || 0)}</span>
+            <!-- Leaderboard -->
+            <div class="card card-pad">
+              <div class="section-head" style="margin:0 0 18px">
+                <div>
+                  <h2 class="section-title" style="font-size:18px">Leaderboard</h2>
+                  <p class="section-sub">Ranked by score, then time</p>
+                </div>
+              </div>
+              <div class="accordion">
+                ${leaderboard.map((sub, i) => {
+                  const rankBadge = i === 0 ? Badge('1st', { tone: 'amber' }) : i === 1 ? Badge('2nd', { tone: 'gray' }) : i === 2 ? Badge('3rd', { tone: 'amber' }) : `<span class="rank-num">${i + 1}</span>`;
+                  const pctTone = sub.percent >= 80 ? 'green' : sub.percent >= 50 ? 'amber' : 'red';
+                  const customStr = sub.participant?.custom
+                    ? Object.entries(sub.participant.custom).map(([k, v]) => `${k}: ${v}`).join(' · ')
+                    : (sub.participant?.org || '');
+                  const detailItems = sub.questionResults || [];
+                  return `
+                    <div class="acc-item ${i === 0 ? 'open' : ''}">
+                      <button class="acc-header" aria-expanded="${i === 0}" aria-controls="resp-body-${i}">
+                        <span class="acc-icon">${rankBadge}</span>
+                        <span class="acc-title">
+                          <span style="display:block">${escapeHtml(sub.participant?.name || 'Anonymous')}</span>
+                          <span class="xs muted" style="font-weight:400">${escapeHtml(sub.participant?.email || '')}</span>
+                        </span>
+                        <span class="acc-meta">
+                          ${customStr ? `<span class="xs muted" style="max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(customStr)}</span>` : ''}
+                          ${Badge(`${sub.percent}%`, { tone: pctTone })}
+                          <span class="acc-toggle">${Icon('chevron-down', 16)}</span>
+                        </span>
+                      </button>
+                      <div class="acc-body" id="resp-body-${i}">
+                        <div class="flex" style="gap:18px; flex-wrap:wrap; margin-bottom:14px">
+                          <span class="meta-item">${Icon('check-circle', 14)}<span>${sub.score}/${sub.totalPoints} points</span></span>
+                          <span class="meta-item">${Icon('clock', 14)}<span>${formatTime(sub.timeTaken || 0)}</span></span>
+                          <span class="meta-item">${Icon('calendar', 14)}<span>${new Date(sub.submittedAt).toLocaleString()}</span></span>
+                          <span class="meta-item">${Badge(sub.passed ? 'Passed' : 'Not passed', { tone: sub.passed ? 'green' : 'red' })}</span>
+                        </div>
+                        <div class="result-review" style="gap:8px">
+                          ${detailItems.length > 0 ? detailItems.map((qr, qi) => `
+                            <div class="review-item" style="display:flex; gap:10px; padding:10px 12px; background:var(--surface-subtle); border-radius:var(--r-sm); border-left:3px solid ${qr.correct ? 'var(--green)' : 'var(--red)'}">
+                              <span class="acc-icon">${Icon(qr.correct ? 'check-circle' : 'x', 15, qr.correct ? '' : 'text-3')}</span>
+                              <div style="min-width:0; flex:1">
+                                <div style="font-size:13.5px; font-weight:600; line-height:1.4">Q${qi + 1}. ${escapeHtml(qr.question)}</div>
+                                <div class="review-reason" style="margin-top:4px">
+                                  <strong>Answer:</strong> ${escapeHtml(qr.type === 'tf' ? qr.userAnswer : qr.options?.[parseInt(qr.userAnswer)] || qr.userAnswer || 'No answer')}
+                                  ${!qr.correct ? ` · <strong>Correct:</strong> ${escapeHtml(qr.type === 'tf' ? qr.correctAnswer : qr.options?.[parseInt(qr.correctAnswer)] || qr.correctAnswer)}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                          `).join('') : '<p class="xs muted">No question-level detail recorded.</p>'}
                         </div>
                       </div>
-                    `;
-                  }).join('')}
-                </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
 
-                <div style="overflow-x:auto">
-                  <table style="width:100%; border-collapse:collapse; font-size: 0.85rem">
-                    <thead>
-                      <tr style="border-bottom: 2px solid rgba(0,0,0,0.08); text-align:left; color: var(--text-sub)">
-                        <th style="padding: 0.75rem">Rank</th>
-                        <th style="padding: 0.75rem">Student Name</th>
-                        <th style="padding: 0.75rem">Class / Custom Details</th>
-                        <th style="padding: 0.75rem">Email</th>
-                        <th style="padding: 0.75rem; text-align:center">Score</th>
-                        <th style="padding: 0.75rem; text-align:center">Percent</th>
-                        <th style="padding: 0.75rem; text-align:center">Time Taken</th>
-                        <th style="padding: 0.75rem; text-align:center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${leaderboard.map((sub, i) => {
-                        const rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
-                        const customStr = sub.participant?.custom ? Object.entries(sub.participant.custom).map(([k, v]) => `<strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}`).join(' · ') : (escapeHtml(sub.participant?.org || '-'));
-                        return `
-                          <tr style="border-bottom: 1px solid rgba(0,0,0,0.04); ${i < 3 ? 'font-weight:700; background: rgba(2,132,199,0.03)' : ''}">
-                            <td style="padding: 0.75rem; font-size: 1rem">${rankIcon}</td>
-                            <td style="padding: 0.75rem; font-weight:800">${escapeHtml(sub.participant?.name || 'Anonymous')}</td>
-                            <td style="padding: 0.75rem; font-size: 0.8rem; color: var(--clay-primary)">${customStr}</td>
-                            <td style="padding: 0.75rem; color: var(--text-sub); font-size: 0.8rem">${escapeHtml(sub.participant?.email || '-')}</td>
-                            <td style="padding: 0.75rem; text-align:center; font-weight:800">${sub.score}/${sub.totalPoints}</td>
-                            <td style="padding: 0.75rem; text-align:center">
-                              <span class="badge ${sub.percent >= 80 ? 'badge-success' : sub.percent >= 50 ? 'badge-warning' : 'badge-danger'}">${sub.percent}%</span>
-                            </td>
-                            <td style="padding: 0.75rem; text-align:center">${formatTime(sub.timeTaken || 0)}</td>
-                            <td style="padding: 0.75rem; text-align:center">
-                              <button class="btn btn-secondary btn-sm view-sub-detail" data-subidx="${i}" style="padding: 0.25rem 0.6rem; font-size: 0.75rem">🔍 View Answers</button>
-                            </td>
-                          </tr>
-                        `;
-                      }).join('')}
-                    </tbody>
-                  </table>
+            <!-- Question breakdown -->
+            <div class="card card-pad">
+              <div class="section-head" style="margin:0 0 18px">
+                <div>
+                  <h2 class="section-title" style="font-size:18px">Question breakdown</h2>
+                  <p class="section-sub">Accuracy per question across all responses</p>
                 </div>
-              `;
-            })()}
-          </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:14px">
+                ${qAccuracy.map(({ qi, pct }) => {
+                  const q = quiz.questions[qi];
+                  const pctTone = pct >= 70 ? 'green' : pct >= 40 ? 'amber' : 'red';
+                  return `
+                    <div>
+                      <div class="flex justify-between" style="margin-bottom:6px; gap:12px">
+                        <span style="font-size:13.5px; font-weight:500; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Q${qi + 1}. ${escapeHtml(q?.text || '')}</span>
+                        ${Badge(`${pct}%`, { tone: pctTone })}
+                      </div>
+                      <div class="progress">
+                        <div class="progress-fill" style="width:${pct}%; background:${pct >= 70 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)'}"></div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
 
-          <!-- Question Difficulty Analysis -->
-          <div class="clay-card">
-            <h3 style="font-size: 1.15rem; font-weight: 800; margin-bottom: 1.25rem">📈 Question Breakdown & Accuracy</h3>
-            ${quiz.questions.map((q, qi) => {
-              const correctCount = submissions.filter(s => s.questionResults?.[qi]?.correct).length;
-              const correctPct = submissions.length > 0 ? Math.round((correctCount / submissions.length) * 100) : 0;
-              return `
-                <div style="padding: 0.85rem; margin-bottom: 0.75rem; background: var(--bg-input); border-radius: var(--radius-sm); box-shadow: var(--clay-shadow-input)">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.4rem">
-                    <span style="font-weight: 600; font-size: 0.9rem">Q${qi + 1}. ${escapeHtml(q.text).substring(0, 80)}</span>
-                    <span class="badge ${correctPct >= 70 ? 'badge-success' : correctPct >= 40 ? 'badge-warning' : 'badge-danger'}">${correctPct}% Accuracy</span>
-                  </div>
-                  <div class="progress-bar"><div class="progress-fill" style="width:${correctPct}%; background:${correctPct >= 70 ? 'var(--clay-success)' : correctPct >= 40 ? 'var(--clay-warning)' : 'var(--clay-danger)'}"></div></div>
-                </div>
-              `;
-            }).join('')}
           </div>
         ` : `
-          <div class="clay-card" style="text-align:center; padding: 3rem">
-            <div style="font-size: 3rem; margin-bottom: 0.5rem">📭</div>
-            <h3>No Responses Yet</h3>
-            <p style="color: var(--text-sub); margin-top: 0.5rem">Share your quiz link to start collecting responses.</p>
+          <div class="card">
+            ${EmptyState({
+              icon: 'users',
+              title: 'No responses yet',
+              desc: 'Share your quiz link to start collecting participant responses.',
+              action: `<button class="btn btn-primary" id="btn-copy-link">${Icon('link', 15)}<span>Copy Quiz Link</span></button>`
+            })}
           </div>
         `}
 
@@ -151,50 +160,26 @@ export async function renderResponses(app, params) {
     </div>
   `;
 
-  // Bind view details modal
-  const leaderboard = [...submissions].sort((a, b) => {
-    if (b.percent !== a.percent) return b.percent - a.percent;
-    if (a.timeTaken !== b.timeTaken) return (a.timeTaken || 0) - (b.timeTaken || 0);
-    return new Date(a.submittedAt) - new Date(b.submittedAt);
-  });
+  bindNavbar(app);
 
-  app.querySelectorAll('.view-sub-detail').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const sub = leaderboard[parseInt(btn.dataset.subidx)];
-      if (!sub) return;
-      
-      const modal = document.createElement('div');
-      modal.className = 'modal-overlay active';
-      modal.innerHTML = `
-        <div class="modal-clay scale-in" style="max-width: 650px; text-align:left">
-          <h3 style="font-size: 1.3rem; font-weight:800; margin-bottom: 0.4rem">📋 Submission Details: ${escapeHtml(sub.participant?.name || 'Participant')}</h3>
-          <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 1rem">
-            Email: <strong>${escapeHtml(sub.participant?.email || '-')}</strong> | Score: <strong>${sub.score}/${sub.totalPoints} (${sub.percent}%)</strong> | Time: <strong>${formatTime(sub.timeTaken || 0)}</strong>
-          </p>
-
-          <div style="max-height: 400px; overflow-y:auto; display:flex; flex-direction:column; gap: 0.75rem; margin-bottom: 1.5rem">
-            ${(sub.questionResults || []).map((qr, qi) => `
-              <div style="padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-sm); border-left: 4px solid ${qr.correct ? 'var(--clay-success)' : 'var(--clay-danger)'}">
-                <div style="font-weight:700; font-size: 0.9rem; margin-bottom: 0.3rem">Q${qi + 1}. ${escapeHtml(qr.question)}</div>
-                <div style="font-size: 0.8rem; margin-bottom: 0.2rem">
-                  Student Answer: <span style="font-weight:700; color:${qr.correct ? 'var(--clay-success)' : 'var(--clay-danger)'}">${escapeHtml(qr.type === 'tf' ? qr.userAnswer : qr.options?.[parseInt(qr.userAnswer)] || qr.userAnswer || 'None')}</span>
-                </div>
-                ${!qr.correct ? `
-                  <div style="font-size: 0.8rem; color: var(--clay-success); font-weight:700">
-                    Correct Answer: ${escapeHtml(qr.type === 'tf' ? qr.correctAnswer : qr.options?.[parseInt(qr.correctAnswer)] || qr.correctAnswer)}
-                  </div>
-                ` : ''}
-              </div>
-            `).join('')}
-          </div>
-
-          <div style="text-align:right">
-            <button class="btn btn-primary btn-sm modal-close-btn">Close Window</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(modal);
-      modal.querySelector('.modal-close-btn').onclick = () => modal.remove();
+  // Accordion toggle
+  app.querySelectorAll('.acc-header').forEach(h => {
+    h.addEventListener('click', () => {
+      const item = h.closest('.acc-item');
+      const open = item.classList.contains('open');
+      item.classList.toggle('open', !open);
+      h.setAttribute('aria-expanded', String(!open));
     });
   });
+
+  // Copy link (empty state)
+  const copyBtn = app.querySelector('#btn-copy-link');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const url = `${window.location.origin}/#/take/${quizId}`;
+      const ok = await copyTextToClipboard(url);
+      if (ok) showToast('Quiz link copied to clipboard');
+      else showToast(url, 'info');
+    });
+  }
 }

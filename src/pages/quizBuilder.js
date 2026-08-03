@@ -1,12 +1,23 @@
 import { saveQuiz, getQuiz, generateId, getAllCertTemplates } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, copyTextToClipboard } from '../utils.js';
-import { requireAdmin } from '../auth.js';
+import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
+import { Icon, Badge, Field, Inp, Txta, Sel, Toggle, EmptyState } from '../components.js';
 
 let currentQuiz = null;
+let activeTab = 'index';       // index | questions | evaluation | certificate | publishing
+let activeQ = 0;               // selected question index
+let saveTimer = null;
+
+const TABS = [
+  { id: 'index', label: 'General', icon: 'file-text' },
+  { id: 'questions', label: 'Questions', icon: 'list-checks' },
+  { id: 'evaluation', label: 'Evaluation', icon: 'target' },
+  { id: 'certificate', label: 'Certificate', icon: 'award' },
+  { id: 'publishing', label: 'Publishing', icon: 'send' }
+];
+
+function quizTitle() { return (currentQuiz?.title || '').trim() || 'Untitled quiz'; }
 
 export async function renderQuizBuilder(app, params) {
-  if (!requireAdmin()) return;
-
   const quizId = params[0];
   if (quizId) {
     currentQuiz = await getQuiz(quizId);
@@ -18,11 +29,11 @@ export async function renderQuizBuilder(app, params) {
       description: '',
       timerMinutes: 30,
       passingPercent: 50,
-      deadline: '', // Last date/time to start quiz
+      deadline: '',
       shuffleQuestions: false,
       showSummary: true,
       showCorrectAnswers: true,
-      isPublished: true, // Default to Live
+      isPublished: true,
       certificateTemplateId: '',
       collectName: true,
       collectEmail: true,
@@ -33,492 +44,632 @@ export async function renderQuizBuilder(app, params) {
       createdAt: new Date().toISOString()
     };
   }
+  activeTab = 'index';
+  activeQ = 0;
   await renderPage(app);
 }
 
 async function renderPage(app) {
   const certs = await getAllCertTemplates();
-
   app.innerHTML = `
     ${renderNavbar()}
-    <div class="page fade-in">
-      <div class="container-sm">
-        
-        <!-- Header -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem">
+
+    <div class="editor-head">
+      <div class="editor-head-inner">
+        <div class="editor-title-group">
+          <a href="#/admin" class="btn btn-ghost btn-sm" style="padding:0 8px" aria-label="Back to dashboard">${Icon('arrow-left', 16)}</a>
           <div>
-            <a href="#/admin" class="btn btn-ghost btn-sm" style="margin-bottom:0.4rem">← Back to Admin Portal</a>
-            <h1 style="font-size: 1.75rem; font-weight: 900">${currentQuiz.title ? '✏️ Edit Quiz' : '➕ Create New Quiz'}</h1>
+            <div class="editor-title" id="editor-title">${escapeHtml(quizTitle())}</div>
+            <div class="toolbar-badge">${statusBadge()}</div>
           </div>
-          <div style="display:flex; gap: 0.5rem">
-            <button class="btn btn-secondary btn-sm" id="btn-preview">👁️ Preview</button>
-            <button class="btn btn-success btn-sm" id="btn-save">💾 Save Draft</button>
-            <button class="btn ${currentQuiz.isPublished ? 'btn-danger' : 'btn-primary'} btn-sm" id="btn-toggle-live">
-              ${currentQuiz.isPublished ? '⏸️ Stop Quiz (Make Inactive)' : '🚀 Make Quiz Live'}
+        </div>
+        <div class="editor-actions">
+          <span class="save-state" id="editor-state"></span>
+          <button class="btn btn-secondary btn-sm" id="btn-preview">${Icon('eye', 14)}<span>Preview</span></button>
+          <button class="btn btn-secondary btn-sm" id="btn-save">${Icon('save', 14)}<span>Save Draft</span></button>
+          <button class="btn ${currentQuiz.isPublished ? 'btn-ghost' : 'btn-primary'} btn-sm" id="btn-toggle-live">
+            ${Icon(currentQuiz.isPublished ? 'pause' : 'play', 14)}<span>${currentQuiz.isPublished ? 'Stop Quiz' : 'Make Live'}</span>
+          </button>
+        </div>
+      </div>
+      <div class="container">
+        <div class="tabs" style="margin-bottom:-1px" role="tablist">
+          ${TABS.map(t => `
+            <button class="tab-btn ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}" role="tab" aria-selected="${activeTab === t.id}">
+              ${Icon(t.icon, 15)}<span>${t.label}</span>
+              ${t.id === 'questions' ? `<span class="badge badge-gray" style="height:18px; min-width:18px; padding:0 5px">${currentQuiz.questions.length}</span>` : ''}
             </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="page" style="padding-top:28px">
+      <div class="container">
+        ${renderActiveTab(certs)}
+      </div>
+    </div>`;
+
+  bindNavbar(app);
+  bindEvents(app);
+  setSaveState('saved');
+}
+
+function statusBadge() {
+  return currentQuiz.isPublished
+    ? Badge('Live', { tone: 'green', dot: true })
+    : Badge('Draft', { tone: 'gray', dot: true });
+}
+
+function renderActiveTab(certs) {
+  switch (activeTab) {
+    case 'questions': return renderQuestionsTab();
+    case 'evaluation': return renderEvaluationTab();
+    case 'certificate': return renderCertificateTab(certs);
+    case 'publishing': return renderPublishingTab();
+    default: return renderGeneralTab();
+  }
+}
+
+/* ============================ GENERAL ============================ */
+function renderGeneralTab() {
+  const cf = currentQuiz.customFields || [];
+  return `
+    <div style="display:grid; grid-template-columns: 1fr 380px; gap:20px; align-items:start; flex-wrap:wrap">
+      <div class="q-editor-card">
+        <div class="q-editor-top"><div class="q-editor-title">Quiz details</div></div>
+        <div class="panel">
+          ${Field({ label: 'Quiz title', required: true, htmlFor: 'quiz-title', control: Inp({ id: 'quiz-title', value: currentQuiz.title, placeholder: 'e.g. General Chemistry — Final Assessment', className: 'input-lg' }) })}
+          ${Field({ label: 'Description & instructions', htmlFor: 'quiz-desc', hint: 'Shown to participants before they begin.', control: Txta({ id: 'quiz-desc', value: currentQuiz.description, rows: 4, placeholder: 'Brief instructions for participants…' }) })}
+        </div>
+      </div>
+
+      <div class="q-editor-card">
+        <div class="q-editor-top"><div class="q-editor-title">Audience</div></div>
+        <div class="panel" style="display:flex; flex-direction:column">
+          ${Toggle({ id: 'quiz-collect-phone', checked: currentQuiz.collectPhone, label: 'Collect phone number', hint: 'Ask participants for their phone before starting.' })}
+          ${Toggle({ id: 'quiz-collect-org', checked: currentQuiz.collectOrg, label: 'Collect institution', hint: 'Ask for the participant\'s school or institution.' })}
+        </div>
+      </div>
+    </div>
+
+    <div class="q-editor-card" style="margin-top:20px">
+      <div class="q-editor-top"><div class="q-editor-title">Custom information fields</div></div>
+      <div class="panel">
+        <p class="muted sm" style="margin-bottom:16px">Collect class, section, roll number, or any other detail at the entry screen.</p>
+        <div id="custom-fields-list">
+          ${cf.map((f, cfi) => renderCustomField(f, cfi)).join('')}
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btn-add-custom-field">${Icon('plus', 14)}<span>Add field</span></button>
+      </div>
+    </div>`;
+}
+
+function renderCustomField(f, cfi) {
+  return `
+    <div class="card" style="padding:16px; margin-bottom:10px; box-shadow:none">
+      <div class="flex gap-sm wrap" style="align-items:flex-end">
+        <div style="flex:2; min-width:160px">
+          ${Field({ label: 'Label', control: Inp({ value: f.label, placeholder: 'e.g. Class / Grade', className: 'cf-label', attrs: `data-cfi="${cfi}"` }) })}
+        </div>
+        <div style="flex:1; min-width:130px">
+          ${Field({ label: 'Type', control: Sel({
+            options: [
+              { value: 'text', label: 'Short text' },
+              { value: 'dropdown', label: 'Dropdown select' },
+              { value: 'number', label: 'Number' }
+            ],
+            value: f.type,
+            className: 'cf-type',
+            attrs: `data-cfi="${cfi}"`
+          }) })}
+        </div>
+        <div style="flex:2; min-width:160px">
+          ${Field({ label: 'Options', control: Inp({ value: f.options || '', placeholder: 'Class 6, Class 7', className: 'cf-options', attrs: `data-cfi="${cfi}" ${f.type !== 'dropdown' ? 'disabled' : ''}` }) })}
+        </div>
+        <label class="checkbox-row" style="margin-bottom:16px">
+          <input type="checkbox" class="cf-req" data-cfi="${cfi}" ${f.required ? 'checked' : ''}>
+          <span class="checkbox-box">${Icon('check', 12)}</span>
+          <span>Required</span>
+        </label>
+        <button class="icon-btn icon-btn-secondary icon-btn-danger cf-del" data-cfi="${cfi}" style="margin-bottom:12px" aria-label="Remove field">${Icon('trash', 15)}</button>
+      </div>
+    </div>`;
+}
+
+/* ============================ QUESTIONS (IDE) ============================ */
+function renderQuestionsTab() {
+  const total = currentQuiz.questions.length;
+  const q = currentQuiz.questions[activeQ];
+  return `
+    <div class="editor-layout">
+      <aside class="editor-sidebar">
+        <div class="sidebar-card">
+          <div class="sidebar-head">
+            <span class="sidebar-title">Questions · ${total}</span>
+            <span class="xs text-3">${currentQuiz.questions.filter(qq => qItemState(qq) === 'done').length} answered</span>
+          </div>
+          <div class="sidebar-search">
+            <div class="search-wrap">${Icon('search', 15)}<input class="input q-search" type="text" placeholder="Search questions…" style="height:36px" aria-label="Search questions"></div>
+          </div>
+          <div class="q-list">
+            ${currentQuiz.questions.map((qq, i) => renderQItem(qq, i)).join('')}
+          </div>
+          <div class="sidebar-add">
+            <button class="btn btn-primary btn-sm" id="btn-add-q">${Icon('plus', 14)}<span>Add MCQ</span></button>
+            <button class="btn btn-secondary btn-sm" id="btn-add-tf">${Icon('plus', 14)}<span>True / False</span></button>
           </div>
         </div>
+      </aside>
 
-        <!-- Status Banner -->
-        <div style="margin-bottom: 1.25rem">
-          <span class="badge ${currentQuiz.isPublished ? 'badge-success' : 'badge-danger'}" style="font-size: 0.9rem; padding: 0.5rem 1.2rem">
-            ${currentQuiz.isPublished ? '🟢 Quiz Status: LIVE (Accepting Submissions)' : '🔴 Quiz Status: STOPPED / INACTIVE (Access Blocked)'}
-          </span>
-        </div>
-
-        <!-- Quiz Meta Card -->
-        <div class="clay-card" style="margin-bottom: 1.5rem">
-          <div class="form-group">
-            <label class="form-label">Quiz Title *</label>
-            <input type="text" class="form-input" id="quiz-title" placeholder="e.g., General Chemistry & Biology Final" value="${escapeHtml(currentQuiz.title)}" style="font-size: 1.1rem; font-weight: 700">
+      <main class="editor-main">
+        ${q ? renderQuestionEditor(q, activeQ) : `
+          <div class="card">
+            ${EmptyState({
+              icon: 'list-checks',
+              title: 'No questions yet',
+              desc: 'Add your first multiple-choice or true/false question to get started.',
+              action: `<button class="btn btn-primary" id="btn-add-q-empty">${Icon('plus', 15)}<span>Add a question</span></button>`
+            })}
           </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">Description / Instructions</label>
-            <textarea class="form-textarea" id="quiz-desc" placeholder="Brief instructions for participants..." style="min-height: 70px">${escapeHtml(currentQuiz.description)}</textarea>
-          </div>
-        </div>
-
-        <!-- Quiz Settings & Rules Card -->
-        <div class="clay-card" style="margin-bottom: 1.5rem">
-          <h3 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 1rem">⚙️ Evaluation, Deadline & Security Controls</h3>
-          
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem">
-            <div class="form-group">
-              <label class="form-label">⏱️ Timer Limit (Minutes)</label>
-              <input type="number" class="form-input" id="quiz-timer" min="1" max="300" value="${currentQuiz.timerMinutes}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">🎯 Passing Score (%)</label>
-              <input type="number" class="form-input" id="quiz-passing" min="0" max="100" value="${currentQuiz.passingPercent}">
-            </div>
-          </div>
-
-          <!-- Deadline Setting -->
-          <div class="form-group" style="margin-bottom: 1rem">
-            <label class="form-label">⏰ Last Date & Time to Attempt Quiz (Optional Deadline)</label>
-            <input type="datetime-local" class="form-input" id="quiz-deadline" value="${currentQuiz.deadline || ''}">
-            <div style="font-size: 0.75rem; color: var(--text-sub); margin-top: 0.3rem">
-              If set, participants will not be able to start the quiz after this date/time. Leave blank for no deadline.
-            </div>
-          </div>
-
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem">
-            <div class="form-group">
-              <label class="form-label">🎓 Certificate Template</label>
-              <select class="form-select" id="quiz-cert-template">
-                <option value="">No Certificate Issued</option>
-                ${certs.map(t => `<option value="${t.id}" ${currentQuiz.certificateTemplateId === t.id ? 'selected' : ''}>${escapeHtml(t.name)}</option>`).join('')}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">🔒 Security & Attempt Rules</label>
-              <div style="display:flex; flex-direction:column; gap: 0.6rem; margin-top: 0.3rem">
-                <label style="display:flex; align-items:center; gap: 0.5rem; font-size: 0.85rem; cursor:pointer">
-                  <input type="checkbox" id="quiz-limit-user" ${currentQuiz.limitPerUser ? 'checked' : ''}>
-                  <strong>Limit to 1 response per Google account</strong>
-                </label>
-                <label style="display:flex; align-items:center; gap: 0.5rem; font-size: 0.85rem; cursor:pointer">
-                  <input type="checkbox" id="quiz-shuffle" ${currentQuiz.shuffleQuestions ? 'checked' : ''}>
-                  Shuffle question order per student
-                </label>
-                <label style="display:flex; align-items:center; gap: 0.5rem; font-size: 0.85rem; cursor:pointer">
-                  <input type="checkbox" id="quiz-show-summary" ${currentQuiz.showSummary !== false ? 'checked' : ''}>
-                  Show quiz summary (score, time, result) after submission
-                </label>
-                <label style="display:flex; align-items:center; gap: 0.5rem; font-size: 0.85rem; cursor:pointer">
-                  <input type="checkbox" id="quiz-show-answers" ${currentQuiz.showCorrectAnswers !== false ? 'checked' : ''}>
-                  Show correct answers & question review after submission
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Participant Details & Custom Info Fields -->
-        <div class="clay-card" style="margin-bottom: 1.5rem">
-          <h3 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.5rem">📋 Participant Information Details Fields</h3>
-          <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 1.25rem">Configure student info collected before entering the quiz arena.</p>
-
-          <div style="display:flex; flex-wrap:wrap; gap: 1.25rem; margin-bottom: 1.25rem; padding: 0.85rem; background: var(--bg-input); border-radius: var(--radius-md); box-shadow: var(--clay-shadow-input)">
-            <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; cursor:pointer">
-              <input type="checkbox" id="quiz-collect-phone" ${currentQuiz.collectPhone ? 'checked' : ''}>
-              <span>Collect Phone Number</span>
-            </label>
-            <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; cursor:pointer">
-              <input type="checkbox" id="quiz-collect-org" ${currentQuiz.collectOrg ? 'checked' : ''}>
-              <span>Collect School / Institution</span>
-            </label>
-          </div>
-
-          <h4 style="font-size: 0.95rem; font-weight: 800; margin-bottom: 0.75rem">Custom Info Fields (Class Dropdown, Roll No, Section)</h4>
-          <div id="custom-fields-list">
-            ${(currentQuiz.customFields || []).map((cf, cfi) => `
-              <div class="clay-card" style="padding: 1rem; margin-bottom: 0.75rem; background: #fff" data-cfi="${cfi}">
-                <div style="display:grid; grid-template-columns: 2fr 1fr 2fr 1fr auto; gap: 0.75rem; align-items:center">
-                  <div>
-                    <label class="form-label" style="font-size:0.75rem">Field Name / Label</label>
-                    <input type="text" class="form-input cf-label" data-cfi="${cfi}" value="${escapeHtml(cf.label)}" placeholder="e.g. Class / Grade">
-                  </div>
-                  <div>
-                    <label class="form-label" style="font-size:0.75rem">Field Type</label>
-                    <select class="form-select cf-type" data-cfi="${cfi}">
-                      <option value="text" ${cf.type === 'text' ? 'selected' : ''}>Short Text</option>
-                      <option value="dropdown" ${cf.type === 'dropdown' ? 'selected' : ''}>Dropdown Select</option>
-                      <option value="number" ${cf.type === 'number' ? 'selected' : ''}>Number</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="form-label" style="font-size:0.75rem">Dropdown Options (Comma-separated)</label>
-                    <input type="text" class="form-input cf-options" data-cfi="${cfi}" value="${escapeHtml(cf.options || '')}" placeholder="Class 6, Class 7, Class 8" ${cf.type !== 'dropdown' ? 'disabled style="opacity:0.5"' : ''}>
-                  </div>
-                  <div style="display:flex; align-items:center; height:100%; padding-top: 1.2rem">
-                    <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.8rem; cursor:pointer">
-                      <input type="checkbox" class="cf-req" data-cfi="${cfi}" ${cf.required ? 'checked' : ''}>
-                      <span>Required</span>
-                    </label>
-                  </div>
-                  <div style="padding-top: 1rem">
-                    <button class="btn btn-danger btn-sm cf-del" data-cfi="${cfi}" style="padding: 0.35rem 0.65rem">🗑️</button>
-                  </div>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-
-          <button class="btn btn-secondary btn-sm" id="btn-add-custom-field" style="margin-top: 0.5rem">+ Add Info Field (e.g. Class, Roll No)</button>
-        </div>
-
-        <!-- Questions List -->
-        <h3 style="font-size: 1.2rem; font-weight: 800; margin-bottom: 1rem">❓ Questions (${currentQuiz.questions.length})</h3>
-        <div id="questions-container">
-          ${currentQuiz.questions.map((q, i) => renderQuestionEditor(q, i)).join('')}
-        </div>
-
-        <div style="text-align:center; margin: 2rem 0">
-          <button class="btn btn-primary btn-lg" id="btn-add-q">+ Add MCQ Question</button>
-          <button class="btn btn-secondary btn-lg" id="btn-add-tf" style="margin-left: 0.75rem">+ Add True/False Question</button>
-        </div>
-
-        ${currentQuiz.isPublished ? `
-          <div class="clay-card">
-            <h3 style="font-size: 1.1rem; font-weight: 800; margin-bottom: 0.5rem">📤 Direct Share Quiz Link</h3>
-            <p style="font-size: 0.85rem; color: var(--text-sub); margin-bottom: 1rem">
-              Share this link with participants to take the quiz.
-            </p>
-            <div style="display:flex; gap: 0.5rem">
-              <input type="text" class="form-input" value="${window.location.origin}/#/take/${currentQuiz.id}" readonly id="share-link">
-              <button class="btn btn-primary" id="btn-copy-link">📋 Copy Link</button>
+        `}
+        ${total > 1 ? `
+          <div class="card" style="padding:14px 20px">
+            <div class="footer-nav">
+              <button class="btn btn-secondary btn-sm" id="q-prev" ${activeQ === 0 ? 'disabled' : ''}>${Icon('chevron-left', 14)}<span>Previous</span></button>
+              <span class="sm text-2 mono">Question ${activeQ + 1} of ${total}</span>
+              <button class="btn btn-secondary btn-sm" id="q-next" ${activeQ === total - 1 ? 'disabled' : ''}><span>Next</span>${Icon('chevron-right', 14)}</button>
             </div>
           </div>
         ` : ''}
-
-      </div>
-    </div>
-  `;
-
-  bindEvents(app);
+      </main>
+    </div>`;
 }
 
+function qItemState(qq) {
+  const valid = qq.type === 'mcq'
+    ? (qq.correctAnswer !== '' && qq.correctAnswer !== undefined && qq.correctAnswer !== null)
+    : (qq.correctAnswer === 'true' || qq.correctAnswer === 'false');
+  return valid ? 'done' : 'empty';
+}
+
+function renderQItem(qq, i) {
+  const text = (qq.text || '').trim() || 'Untitled question';
+  return `
+    <button class="q-item ${activeQ === i ? 'active' : ''}" data-qi="${i}">
+      <span class="q-index">${i + 1}</span>
+      <span class="q-item-copy">
+        <span class="q-item-text">${escapeHtml(text)}</span>
+        <span class="q-item-meta">${qq.type === 'tf' ? 'True / False' : 'MCQ'} · ${qq.points || 1} pt</span>
+      </span>
+      <span class="state-dot ${qItemState(qq)}" title="${qItemState(qq) === 'done' ? 'Answer set' : 'Answer not set'}"></span>
+    </button>`;
+}
+
+/* ============================ QUESTION EDITOR ============================ */
 function renderQuestionEditor(q, i) {
   const letters = 'ABCDEFGHIJ';
-  const isReq = q.required !== false; // Default required to true
-
+  const isReq = q.required !== false;
   return `
-    <div class="clay-card" style="margin-bottom: 1.25rem" data-qindex="${i}">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap:wrap; gap: 0.5rem">
-        <div style="display:flex; align-items:center; gap: 0.75rem">
-          <span class="badge badge-clay">Question ${i + 1}</span>
-          <label style="display:flex; align-items:center; gap: 0.4rem; font-size: 0.85rem; font-weight: 700; color: var(--clay-primary); cursor:pointer">
-            <input type="checkbox" class="q-required" data-qi="${i}" ${isReq ? 'checked' : ''}>
-            <span>* Required Question</span>
-          </label>
-        </div>
-        
-        <div style="display:flex; gap: 0.5rem; align-items:center">
-          <label style="font-size: 0.85rem; color: var(--text-sub)">Points:</label>
-          <input type="number" class="form-input q-points" data-qi="${i}" value="${q.points || 1}" min="1" max="100" style="width: 70px; text-align:center">
+    <div class="q-editor-card">
+      <div class="q-editor-top">
+        <div class="q-editor-title">Question ${i + 1} of ${currentQuiz.questions.length}</div>
+        <div class="flex gap-sm wrap">
+          <span class="badge badge-gray">${q.type === 'tf' ? 'True / False' : 'Multiple choice'}</span>
+          <button class="btn btn-secondary btn-sm q-dup" data-qi="${i}">${Icon('copy', 14)}<span>Duplicate</span></button>
+          <button class="btn btn-danger-outline btn-sm q-del" data-qi="${i}">${Icon('trash', 14)}<span>Delete</span></button>
         </div>
       </div>
+      <div class="panel">
+        ${Field({
+          label: 'Question',
+          required: true,
+          control: Inp({ className: 'q-text', value: q.text, placeholder: 'Enter the question…', attrs: `data-qi="${i}" style="font-weight:600"` })
+        })}
 
-      <div class="form-group">
-        <input type="text" class="form-input q-text" data-qi="${i}" placeholder="Enter question text..." value="${escapeHtml(q.text)}" style="font-weight: 700; font-size: 1rem">
-      </div>
-
-      ${q.type === 'tf' ? `
-        <div style="display:flex; flex-direction:column; gap: 0.5rem; margin-bottom: 1rem">
-          <label class="quiz-option-btn ${q.correctAnswer === 'true' ? 'selected' : ''}" style="cursor:pointer">
-            <input type="radio" name="tf-${i}" class="q-radio-tf" data-qi="${i}" data-oi="true" ${q.correctAnswer === 'true' ? 'checked' : ''}>
-            <span>True</span>
-          </label>
-          <label class="quiz-option-btn ${q.correctAnswer === 'false' ? 'selected' : ''}" style="cursor:pointer">
-            <input type="radio" name="tf-${i}" class="q-radio-tf" data-qi="${i}" data-oi="false" ${q.correctAnswer === 'false' ? 'checked' : ''}>
-            <span>False</span>
-          </label>
-        </div>
-      ` : `
-        <div style="margin-bottom: 1rem">
-          ${(q.options || []).map((opt, oi) => `
-            <div style="display:flex; align-items:center; gap: 0.75rem; margin-bottom: 0.5rem">
-              <input type="radio" name="mcq-${i}" class="q-radio-mcq" data-qi="${i}" data-oi="${oi}" ${q.correctAnswer === oi.toString() ? 'checked' : ''} title="Mark correct answer">
-              <span style="font-weight:800; font-size: 0.85rem; color: var(--text-sub); width: 20px">${letters[oi]}.</span>
-              <input type="text" class="form-input opt-text" data-qi="${i}" data-oi="${oi}" placeholder="Option ${letters[oi]}" value="${escapeHtml(opt)}">
-              <button class="btn btn-danger btn-sm option-delete" data-qi="${i}" data-oi="${oi}" style="padding: 0.4rem 0.8rem">✕</button>
+        ${q.type === 'mcq' ? `
+          <div style="margin-bottom:16px">
+            <label class="field-label">Options <span class="field-req">*</span></label>
+            <p class="field-hint" style="margin-bottom:12px">Select the correct answer using the radio button on the left.</p>
+            ${(q.options || []).map((opt, oi) => `
+              <div class="option-row">
+                <span class="radio">
+                  <input type="radio" name="mcq-${i}" class="q-radio-mcq" data-qi="${i}" data-oi="${oi}" ${String(q.correctAnswer) === String(oi) ? 'checked' : ''} aria-label="Mark option ${letters[oi]} as correct">
+                </span>
+                <input type="text" class="input opt-text" data-qi="${i}" data-oi="${oi}" placeholder="Option ${letters[oi]}" value="${escapeHtml(opt)}" style="height:42px">
+                <button class="icon-btn icon-btn-secondary option-delete" data-qi="${i}" data-oi="${oi}" aria-label="Remove option" ${q.options.length <= 2 ? 'disabled' : ''}>${Icon('x', 15)}</button>
+              </div>
+            `).join('')}
+            <button class="btn btn-secondary btn-sm q-add-opt" data-qi="${i}" ${q.options?.length >= 8 ? 'disabled' : ''}>${Icon('plus', 14)}<span>Add option</span></button>
+          </div>
+        ` : `
+          <div style="margin-bottom:20px">
+            <label class="field-label">Correct answer <span class="field-req">*</span></label>
+            <div class="flex wrap" style="gap:10px; margin-top:4px">
+              ${[['true', 'True'], ['false', 'False']].map(([v, label]) => `
+                <label class="choice-card ${String(q.correctAnswer) === v ? 'checked' : ''}">
+                  <input type="radio" name="tf-${i}" class="q-radio-tf" data-qi="${i}" data-oi="${v}" ${String(q.correctAnswer) === v ? 'checked' : ''}>
+                  <span class="opt-letter">${v === 'true' ? 'T' : 'F'}</span><span>${label}</span>
+                </label>
+              `).join('')}
             </div>
-          `).join('')}
+          </div>
+        `}
+
+        <div class="flex gap-sm wrap" style="align-items:flex-end">
+          <div style="width:120px">
+            ${Field({ label: 'Points', control: Inp({ type: 'number', className: 'q-points', value: q.points || 1, min: '1', max: '100', attrs: `data-qi="${i}"` }) })}
+          </div>
+          <label class="checkbox-row" style="margin-bottom:20px">
+            <input type="checkbox" class="q-required" data-qi="${i}" ${isReq ? 'checked' : ''}>
+            <span class="checkbox-box">${Icon('check', 12)}</span>
+            <span>Required question</span>
+          </label>
         </div>
-      `}
-
-      <div style="display:flex; gap: 0.5rem; align-items:center; flex-wrap:wrap">
-        ${q.type !== 'tf' ? `<button class="btn btn-secondary btn-sm q-add-opt" data-qi="${i}">+ Add Option</button>` : ''}
-        <button class="btn btn-secondary btn-sm q-dup" data-qi="${i}">📋 Duplicate</button>
-        <button class="btn btn-secondary btn-sm q-up" data-qi="${i}" ${i === 0 ? 'disabled' : ''}>⬆️</button>
-        <button class="btn btn-secondary btn-sm q-down" data-qi="${i}" ${i === currentQuiz.questions.length - 1 ? 'disabled' : ''}>⬇️</button>
-        <button class="btn btn-danger btn-sm q-del" data-qi="${i}" style="margin-left:auto">🗑️ Remove Question</button>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-function sync(app) {
-  currentQuiz.title = app.querySelector('#quiz-title')?.value || '';
-  currentQuiz.description = app.querySelector('#quiz-desc')?.value || '';
-  currentQuiz.timerMinutes = parseInt(app.querySelector('#quiz-timer')?.value) || 30;
-  currentQuiz.passingPercent = parseInt(app.querySelector('#quiz-passing')?.value) || 50;
-  currentQuiz.deadline = app.querySelector('#quiz-deadline')?.value || '';
-  currentQuiz.shuffleQuestions = app.querySelector('#quiz-shuffle')?.checked || false;
-  currentQuiz.showSummary = app.querySelector('#quiz-show-summary')?.checked ?? true;
-  currentQuiz.showCorrectAnswers = app.querySelector('#quiz-show-answers')?.checked ?? true;
-  currentQuiz.limitPerUser = app.querySelector('#quiz-limit-user')?.checked ?? true;
-  currentQuiz.certificateTemplateId = app.querySelector('#quiz-cert-template')?.value || '';
-  currentQuiz.collectPhone = app.querySelector('#quiz-collect-phone')?.checked || false;
-  currentQuiz.collectOrg = app.querySelector('#quiz-collect-org')?.checked || false;
+/* ============================ EVALUATION ============================ */
+function renderEvaluationTab() {
+  return `
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items:start">
+      <div class="q-editor-card">
+        <div class="q-editor-top"><div class="q-editor-title">Scoring &amp; time</div></div>
+        <div class="panel">
+          ${Field({ label: 'Timer limit (minutes)', htmlFor: 'quiz-timer', control: Inp({ type: 'number', id: 'quiz-timer', value: currentQuiz.timerMinutes, min: '1', max: '300' }) })}
+          ${Field({ label: 'Passing score (%)', htmlFor: 'quiz-passing', hint: 'Minimum percentage required to earn a certificate.', control: Inp({ type: 'number', id: 'quiz-passing', value: currentQuiz.passingPercent, min: '0', max: '100' }) })}
+          ${Field({ label: 'Deadline to start (optional)', htmlFor: 'quiz-deadline', hint: 'Participants can no longer start after this date and time. Leave blank for none.', control: Inp({ type: 'datetime-local', id: 'quiz-deadline', value: currentQuiz.deadline || '' }) })}
+        </div>
+      </div>
 
-  currentQuiz.customFields = currentQuiz.customFields || [];
-  app.querySelectorAll('.cf-label').forEach(el => {
-    const cfi = parseInt(el.dataset.cfi);
-    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].label = el.value;
-  });
-  app.querySelectorAll('.cf-type').forEach(el => {
-    const cfi = parseInt(el.dataset.cfi);
-    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].type = el.value;
-  });
-  app.querySelectorAll('.cf-options').forEach(el => {
-    const cfi = parseInt(el.dataset.cfi);
-    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].options = el.value;
-  });
-  app.querySelectorAll('.cf-req').forEach(el => {
-    const cfi = parseInt(el.dataset.cfi);
-    if (currentQuiz.customFields[cfi]) currentQuiz.customFields[cfi].required = el.checked;
-  });
-
-  app.querySelectorAll('.q-text').forEach(el => {
-    const i = parseInt(el.dataset.qi);
-    if (currentQuiz.questions[i]) currentQuiz.questions[i].text = el.value;
-  });
-  app.querySelectorAll('.q-required').forEach(el => {
-    const i = parseInt(el.dataset.qi);
-    if (currentQuiz.questions[i]) currentQuiz.questions[i].required = el.checked;
-  });
-  app.querySelectorAll('.opt-text').forEach(el => {
-    const qi = parseInt(el.dataset.qi), oi = parseInt(el.dataset.oi);
-    if (currentQuiz.questions[qi]?.options?.[oi] !== undefined) {
-      currentQuiz.questions[qi].options[oi] = el.value;
-    }
-  });
-  app.querySelectorAll('.q-points').forEach(el => {
-    const i = parseInt(el.dataset.qi);
-    if (currentQuiz.questions[i]) currentQuiz.questions[i].points = parseInt(el.value) || 1;
-  });
+      <div class="q-editor-card">
+        <div class="q-editor-top"><div class="q-editor-title">Behaviour</div></div>
+        <div class="panel" style="display:flex; flex-direction:column">
+          ${Toggle({ id: 'quiz-limit-user', checked: currentQuiz.limitPerUser, label: 'One response per Google account', hint: 'Prevents a student from submitting more than once.' })}
+          ${Toggle({ id: 'quiz-shuffle', checked: currentQuiz.shuffleQuestions, label: 'Shuffle question order', hint: 'Present questions in a different order to each student.' })}
+          ${Toggle({ id: 'quiz-show-summary', checked: currentQuiz.showSummary !== false, label: 'Show result summary', hint: 'Show score, time and pass status after submission.' })}
+          ${Toggle({ id: 'quiz-show-answers', checked: currentQuiz.showCorrectAnswers !== false, label: 'Show correct answers', hint: 'Let students review correct answers after submitting.' })}
+          <div class="info" style="margin-top:18px">
+            ${Icon('shield', 16)}<span>Google Sign-In is always required — participants must verify with a Google account before starting.</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
 
-function validateQuiz(app) {
-  sync(app);
-  for (let i = 0; i < currentQuiz.questions.length; i++) {
-    const q = currentQuiz.questions[i];
-    const qNum = i + 1;
-    if (!q || !q.text || q.text.trim() === '') {
-      window.alert(`Question ${qNum} is empty. Please enter the question text.`);
-      showToast(`Question ${qNum} text is empty`, 'error');
-      return false;
-    }
-    if (q.type === 'mcq') {
-      if (!q.options || q.options.length < 2) {
-        window.alert(`Question ${qNum} must have at least 2 options.`);
-        showToast(`Question ${qNum} needs at least 2 options`, 'error');
-        return false;
-      }
-      if (q.correctAnswer === '' || q.correctAnswer === undefined || q.correctAnswer === null) {
-        window.alert(`Please mark a correct answer for Question ${qNum}.`);
-        showToast(`Mark correct answer for question ${qNum}`, 'error');
-        return false;
-      }
-      const idx = parseInt(q.correctAnswer);
-      if (isNaN(idx) || idx < 0 || idx >= q.options.length) {
-        window.alert(`Question ${qNum} has an invalid correct answer selection.`);
-        showToast(`Invalid correct answer for question ${qNum}`, 'error');
-        return false;
-      }
-    } else if (q.type === 'tf') {
-      if (q.correctAnswer !== 'true' && q.correctAnswer !== 'false') {
-        window.alert(`Please select True or False as the correct answer for Question ${qNum}.`);
-        showToast(`Select correct True/False for question ${qNum}`, 'error');
-        return false;
-      }
-    }
+/* ============================ CERTIFICATE ============================ */
+function renderCertificateTab(certs) {
+  const options = [{ value: '', label: 'No certificate issued' }, ...certs.map(t => ({ value: t.id, label: t.name || 'Untitled template' }))];
+  return `
+    <div class="q-editor-card" style="max-width:640px">
+      <div class="q-editor-top"><div class="q-editor-title">Certificate</div></div>
+      <div class="panel">
+        ${Field({
+          label: 'Certificate template',
+          htmlFor: 'quiz-cert-template',
+          hint: certs.length === 0 ? 'No templates yet — create one and it will appear here.' : undefined,
+          control: Sel({ id: 'quiz-cert-template', options, value: currentQuiz.certificateTemplateId })
+        })}
+        <div class="flex gap-sm">
+          <a href="#/certificates/new" class="btn btn-secondary btn-sm">${Icon('upload', 14)}<span>Upload / manage templates</span></a>
+        </div>
+        <div class="info" style="margin-top:18px">
+          ${Icon('award', 16)}<span>Participants who reach the passing score will be able to download this certificate instantly.</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ============================ PUBLISHING ============================ */
+function renderPublishingTab() {
+  return `
+    <div style="display:grid; grid-template-columns: 1fr 380px; gap:20px; align-items:start">
+      <div class="q-editor-card">
+        <div class="q-editor-top"><div class="q-editor-title">Share link</div></div>
+        <div class="panel">
+          <p class="muted sm" style="margin-bottom:12px">Paste this link into your classroom group, or wherever students access their quizzes.</p>
+          <div class="flex gap-sm">
+            <input type="text" class="input" id="share-link" value="${window.location.origin}/#/take/${currentQuiz.id}" readonly style="flex:1" aria-label="Quiz share link">
+            <button class="btn btn-primary" id="btn-copy-link">${Icon('copy', 15)}<span>Copy</span></button>
+          </div>
+          <div class="info" style="margin-top:18px">
+            ${Icon(currentQuiz.isPublished ? 'zap' : 'pause', 16)}
+            <span>${currentQuiz.isPublished ? 'This quiz is <strong>live</strong> and accepting submissions.' : 'This quiz is a <strong>draft</strong>. Participants cannot access it until you click "Make Live".'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="q-editor-card">
+        <div class="q-editor-top"><div class="q-editor-title">Visibility</div></div>
+        <div class="panel">
+          ${statusBadge()}
+          <p class="muted sm" style="margin:12px 0 16px">Control when students can attempt this quiz.</p>
+          <button class="btn ${currentQuiz.isPublished ? 'btn-danger-outline' : 'btn-primary'} btn-sm" id="btn-publish-inline">
+            ${Icon(currentQuiz.isPublished ? 'pause' : 'play', 14)}<span>${currentQuiz.isPublished ? 'Stop Quiz' : 'Make Quiz Live'}</span>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ============================ SAVE STATE ============================ */
+function setSaveState(state) {
+  const el = document.getElementById('editor-state');
+  if (!el) return;
+  if (state === 'saving') {
+    el.className = 'save-state saving';
+    el.innerHTML = `${Icon('loader', 14)}<span>Saving…</span>`;
+  } else if (state === 'unsaved') {
+    el.className = 'save-state idle';
+    el.innerHTML = `<span>Unsaved changes</span>`;
+  } else {
+    el.className = 'save-state saved';
+    el.innerHTML = `${Icon('check-circle', 14)}<span>All changes saved</span>`;
   }
-  return true;
 }
 
+function markDirty() {
+  setSaveState('unsaved');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => autosave(), 800);
+}
+
+async function autosave() {
+  setSaveState('saving');
+  try {
+    await saveQuiz(currentQuiz);
+    setSaveState('saved');
+  } catch (err) {
+    setSaveState('unsaved');
+    showToast('Failed to save: ' + (err.message || 'Server error'), 'error');
+  }
+}
+
+async function save() {
+  setSaveState('saving');
+  try {
+    await saveQuiz(currentQuiz);
+    setSaveState('saved');
+    return true;
+  } catch (err) {
+    setSaveState('unsaved');
+    showToast('Failed to save: ' + (err.message || 'Server error'), 'error');
+    return false;
+  }
+}
+
+/* ============================ EVENTS ============================ */
 function bindEvents(app) {
-  app.querySelector('#btn-add-custom-field')?.addEventListener('click', async () => {
-    sync(app);
-    currentQuiz.customFields = currentQuiz.customFields || [];
-    currentQuiz.customFields.push({
-      id: generateId(),
-      label: 'Class / Grade',
-      type: 'dropdown',
-      options: 'Class 6, Class 7, Class 8, Class 9, Class 10',
-      required: true
-    });
-    await saveQuiz(currentQuiz);
-    renderPage(app);
+  // Tabs
+  app.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; renderPage(app); });
   });
 
-  app.querySelectorAll('.cf-del').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      sync(app);
-      const cfi = parseInt(btn.dataset.cfi);
-      currentQuiz.customFields.splice(cfi, 1);
-      await saveQuiz(currentQuiz);
-      renderPage(app);
-    });
-  });
-
-  app.querySelectorAll('.cf-type').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      sync(app);
-      renderPage(app);
-    });
-  });
-
+  // Head actions
   app.querySelector('#btn-save')?.addEventListener('click', async () => {
-    if (!validateQuiz(app)) return;
-    await saveQuiz(currentQuiz);
-    showToast('Quiz saved! 💾');
+    if (!validateQuiz()) return;
+    await save();
+    showToast('Quiz saved');
   });
-
-  app.querySelector('#btn-toggle-live')?.addEventListener('click', async () => {
-    if (!validateQuiz(app)) return;
-    currentQuiz.isPublished = !currentQuiz.isPublished;
-    await saveQuiz(currentQuiz);
-    showToast(currentQuiz.isPublished ? 'Quiz status set to LIVE! 🚀' : 'Quiz stopped (Inactive)');
-    renderPage(app);
-  });
-
+  app.querySelector('#btn-toggle-live')?.addEventListener('click', () => toggleLive(app));
+  app.querySelector('#btn-publish-inline')?.addEventListener('click', () => toggleLive(app));
   app.querySelector('#btn-preview')?.addEventListener('click', async () => {
-    if (!validateQuiz(app)) return;
+    if (!validateQuiz()) return;
     await saveQuiz(currentQuiz);
     window.location.hash = '#/take/' + currentQuiz.id;
   });
-
-  app.querySelector('#btn-copy-link')?.addEventListener('click', () => {
+  app.querySelector('#btn-copy-link')?.addEventListener('click', async () => {
     const url = app.querySelector('#share-link').value;
-    copyTextToClipboard(url).then(ok => {
-      if (ok) showToast('Quiz link copied! 📋');
-      else showToast(url, 'info');
+    const ok = await copyTextToClipboard(url);
+    if (ok) showToast('Quiz link copied');
+    else showToast(url, 'info');
+  });
+
+  // General / Evaluation live bindings
+  app.querySelector('#quiz-title')?.addEventListener('input', e => {
+    currentQuiz.title = e.target.value;
+    const t = document.getElementById('editor-title');
+    if (t) t.textContent = quizTitle();
+    markDirty();
+  });
+  app.querySelector('#quiz-desc')?.addEventListener('input', e => { currentQuiz.description = e.target.value; markDirty(); });
+  app.querySelector('#quiz-timer')?.addEventListener('input', e => { currentQuiz.timerMinutes = parseInt(e.target.value) || 0; markDirty(); });
+  app.querySelector('#quiz-passing')?.addEventListener('input', e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); });
+  app.querySelector('#quiz-deadline')?.addEventListener('input', e => { currentQuiz.deadline = e.target.value || ''; markDirty(); });
+  app.querySelector('#quiz-cert-template')?.addEventListener('change', e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); });
+  bindToggle(app, 'quiz-collect-phone', 'collectPhone');
+  bindToggle(app, 'quiz-collect-org', 'collectOrg');
+  bindToggle(app, 'quiz-limit-user', 'limitPerUser');
+  bindToggle(app, 'quiz-shuffle', 'shuffleQuestions');
+  bindToggle(app, 'quiz-show-summary', 'showSummary');
+  bindToggle(app, 'quiz-show-answers', 'showCorrectAnswers');
+
+  // Active question live editing
+  app.querySelector('.q-text')?.addEventListener('input', e => {
+    const i = parseInt(e.target.dataset.qi);
+    if (currentQuiz.questions[i]) {
+      currentQuiz.questions[i].text = e.target.value;
+      markDirty();
+      updateSidebarPreview(i);
+    }
+  });
+  app.querySelectorAll('.opt-text').forEach(el => {
+    el.addEventListener('input', e => {
+      const qi = parseInt(el.dataset.qi), oi = parseInt(el.dataset.oi);
+      if (currentQuiz.questions[qi]?.options) { currentQuiz.questions[qi].options[oi] = e.target.value; markDirty(); }
     });
   });
-
-  app.querySelector('#btn-add-q')?.addEventListener('click', async () => {
-    sync(app);
-    currentQuiz.questions.push({ id: generateId(), type: 'mcq', text: '', options: ['', '', '', ''], correctAnswer: '', points: 1, required: true });
-    await saveQuiz(currentQuiz);
-    renderPage(app);
+  app.querySelectorAll('.q-points').forEach(el => {
+    el.addEventListener('input', e => {
+      const qi = parseInt(el.dataset.qi);
+      if (currentQuiz.questions[qi]) currentQuiz.questions[qi].points = parseInt(e.target.value) || 1;
+      markDirty();
+    });
   });
-
-  app.querySelector('#btn-add-tf')?.addEventListener('click', async () => {
-    sync(app);
-    currentQuiz.questions.push({ id: generateId(), type: 'tf', text: '', correctAnswer: '', points: 1, required: true });
-    await saveQuiz(currentQuiz);
-    renderPage(app);
+  app.querySelectorAll('.q-required').forEach(el => {
+    el.addEventListener('change', e => {
+      const qi = parseInt(el.dataset.qi);
+      if (currentQuiz.questions[qi]) currentQuiz.questions[qi].required = el.checked;
+      markDirty();
+    });
   });
-
-  app.querySelectorAll('.q-radio-mcq, .q-radio-tf').forEach(el => {
-    el.addEventListener('change', async () => {
-      sync(app);
-      currentQuiz.questions[parseInt(el.dataset.qi)].correctAnswer = el.dataset.oi;
-      await saveQuiz(currentQuiz);
+  app.querySelectorAll('.q-radio-mcq, .q-radio-tf').forEach(radio => {
+    radio.addEventListener('change', async () => {
+      const qi = parseInt(radio.dataset.qi), oi = radio.dataset.oi;
+      if (!currentQuiz.questions[qi]) return;
+      currentQuiz.questions[qi].correctAnswer = oi;
+      await save();
       renderPage(app);
     });
   });
 
+  // Custom fields
+  app.querySelector('#btn-add-custom-field')?.addEventListener('click', async () => {
+    currentQuiz.customFields = currentQuiz.customFields || [];
+    currentQuiz.customFields.push({ id: generateId(), label: 'Class / Grade', type: 'dropdown', options: 'Class 6, Class 7, Class 8, Class 9, Class 10', required: true });
+    await save();
+    renderPage(app);
+  });
+  app.querySelectorAll('.cf-del').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      currentQuiz.customFields = currentQuiz.customFields || [];
+      currentQuiz.customFields.splice(parseInt(btn.dataset.cfi), 1);
+      await save();
+      renderPage(app);
+    });
+  });
+  app.querySelectorAll('.cf-type').forEach(sel => {
+    sel.addEventListener('change', () => renderPage(app));
+  });
+  app.querySelectorAll('.cf-label').forEach(el => {
+    el.addEventListener('input', e => {
+      const cfi = parseInt(e.target.dataset.cfi);
+      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].label = e.target.value; markDirty(); }
+    });
+  });
+  app.querySelectorAll('.cf-options').forEach(el => {
+    el.addEventListener('input', e => {
+      const cfi = parseInt(e.target.dataset.cfi);
+      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].options = e.target.value; markDirty(); }
+    });
+  });
+  app.querySelectorAll('.cf-req').forEach(el => {
+    el.addEventListener('change', e => {
+      const cfi = parseInt(e.target.dataset.cfi);
+      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].required = e.target.checked; markDirty(); }
+    });
+  });
+
+  // Add questions
+  app.querySelector('#btn-add-q')?.addEventListener('click', () => addQuestion(app, 'mcq'));
+  app.querySelector('#btn-add-tf')?.addEventListener('click', () => addQuestion(app, 'tf'));
+  app.querySelector('#btn-add-q-empty')?.addEventListener('click', () => addQuestion(app, 'mcq'));
+
+  // Options
   app.querySelectorAll('.option-delete').forEach(el => {
     el.addEventListener('click', async () => {
-      sync(app);
       const qi = parseInt(el.dataset.qi), oi = parseInt(el.dataset.oi), q = currentQuiz.questions[qi];
-      if (q.options.length <= 2) { showToast('Need at least 2 options', 'error'); return; }
+      if (!q || q.options.length <= 2) { showToast('Need at least 2 options', 'error'); return; }
       q.options.splice(oi, 1);
       if (q.correctAnswer === oi.toString()) q.correctAnswer = '';
       else if (parseInt(q.correctAnswer) > oi) q.correctAnswer = (parseInt(q.correctAnswer) - 1).toString();
-      await saveQuiz(currentQuiz);
+      await save();
       renderPage(app);
     });
   });
-
   app.querySelectorAll('.q-add-opt').forEach(el => {
     el.addEventListener('click', async () => {
-      sync(app);
       const qi = parseInt(el.dataset.qi);
-      if (currentQuiz.questions[qi].options.length >= 8) { showToast('Maximum 8 options', 'error'); return; }
-      currentQuiz.questions[qi].options.push('');
-      await saveQuiz(currentQuiz);
+      const q = currentQuiz.questions[qi];
+      if (!q || q.options.length >= 8) { showToast('Maximum 8 options', 'error'); return; }
+      q.options.push('');
+      await save();
       renderPage(app);
     });
   });
-
   app.querySelectorAll('.q-dup').forEach(el => {
     el.addEventListener('click', async () => {
-      sync(app);
       const qi = parseInt(el.dataset.qi);
       const dup = JSON.parse(JSON.stringify(currentQuiz.questions[qi]));
       dup.id = generateId();
       currentQuiz.questions.splice(qi + 1, 0, dup);
-      await saveQuiz(currentQuiz);
+      activeQ = qi + 1;
+      await save();
       renderPage(app);
     });
   });
-
-  app.querySelectorAll('.q-up').forEach(el => {
-    el.addEventListener('click', async () => {
-      sync(app);
-      const qi = parseInt(el.dataset.qi);
-      if (qi > 0) {
-        [currentQuiz.questions[qi], currentQuiz.questions[qi - 1]] = [currentQuiz.questions[qi - 1], currentQuiz.questions[qi]];
-        await saveQuiz(currentQuiz);
-        renderPage(app);
-      }
-    });
-  });
-
-  app.querySelectorAll('.q-down').forEach(el => {
-    el.addEventListener('click', async () => {
-      sync(app);
-      const qi = parseInt(el.dataset.qi);
-      if (qi < currentQuiz.questions.length - 1) {
-        [currentQuiz.questions[qi], currentQuiz.questions[qi + 1]] = [currentQuiz.questions[qi + 1], currentQuiz.questions[qi]];
-        await saveQuiz(currentQuiz);
-        renderPage(app);
-      }
-    });
-  });
-
   app.querySelectorAll('.q-del').forEach(el => {
     el.addEventListener('click', async () => {
-      sync(app);
       currentQuiz.questions.splice(parseInt(el.dataset.qi), 1);
-      await saveQuiz(currentQuiz);
+      if (activeQ >= currentQuiz.questions.length) activeQ = currentQuiz.questions.length - 1;
+      if (activeQ < 0) activeQ = 0;
+      await save();
       renderPage(app);
     });
   });
+
+  // Sidebar navigation + search
+  app.querySelectorAll('.q-item').forEach(item => {
+    item.addEventListener('click', () => { activeQ = parseInt(item.dataset.qi); renderPage(app); });
+  });
+  app.querySelector('#q-prev')?.addEventListener('click', () => { if (activeQ > 0) { activeQ--; renderPage(app); } });
+  app.querySelector('#q-next')?.addEventListener('click', () => { if (activeQ < currentQuiz.questions.length - 1) { activeQ++; renderPage(app); } });
+  app.querySelector('.q-search')?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    app.querySelectorAll('.q-item').forEach(it => {
+      it.style.display = it.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+
+function bindToggle(app, id, key) {
+  const el = app.querySelector(`#${id}`);
+  if (el) el.addEventListener('change', () => { currentQuiz[key] = el.checked; markDirty(); });
+}
+
+function updateSidebarPreview(i) {
+  const item = document.querySelector(`.q-item[data-qi="${i}"] .q-item-text`);
+  if (item) item.textContent = currentQuiz.questions[i].text.trim() || 'Untitled question';
+}
+
+async function toggleLive(app) {
+  if (!validateQuiz()) return;
+  currentQuiz.isPublished = !currentQuiz.isPublished;
+  await save();
+  showToast(currentQuiz.isPublished ? 'Quiz is now live' : 'Quiz moved to drafts');
+  renderPage(app);
+}
+
+async function addQuestion(app, type) {
+  if (type === 'mcq') {
+    currentQuiz.questions.push({ id: generateId(), type: 'mcq', text: '', options: ['', '', '', ''], correctAnswer: '', points: 1, required: true });
+  } else {
+    currentQuiz.questions.push({ id: generateId(), type: 'tf', text: '', correctAnswer: '', points: 1, required: true });
+  }
+  activeQ = currentQuiz.questions.length - 1;
+  activeTab = 'questions';
+  await save();
+  renderPage(app);
+}
+
+function validateQuiz() {
+  for (let i = 0; i < currentQuiz.questions.length; i++) {
+    const q = currentQuiz.questions[i];
+    if (!q || !q.text || q.text.trim() === '') {
+      activeTab = 'questions';
+      activeQ = i;
+      showToast(`Question ${i + 1} text is empty`, 'error');
+      return false;
+    }
+    if (q.type === 'mcq') {
+      if (!q.options || q.options.length < 2) { showToast(`Question ${i + 1} needs at least 2 options`, 'error'); return false; }
+      if (q.correctAnswer === '' || q.correctAnswer === undefined || q.correctAnswer === null) { showToast(`Mark a correct answer for question ${i + 1}`, 'error'); return false; }
+      const idx = parseInt(q.correctAnswer);
+      if (isNaN(idx) || idx < 0 || idx >= q.options.length) { showToast(`Question ${i + 1} has an invalid correct answer`, 'error'); return false; }
+    } else if (q.type === 'tf') {
+      if (q.correctAnswer !== 'true' && q.correctAnswer !== 'false') { showToast(`Select True or False for question ${i + 1}`, 'error'); return false; }
+    }
+  }
+  return true;
 }

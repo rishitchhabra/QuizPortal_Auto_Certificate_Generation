@@ -1,74 +1,94 @@
 import { isAdminLoggedIn } from './auth.js';
+import { Icon } from './components.js';
 
 let toastContainer = null;
 
 export function showToast(message, type = 'success') {
   if (!toastContainer) {
     toastContainer = document.createElement('div');
-    toastContainer.className = 'toast-container';
+    toastContainer.className = 'toast-wrap';
     document.body.appendChild(toastContainer);
   }
-  const icons = { success: '✅', error: '⚠️', info: 'ℹ️' };
+  const icons = { success: 'check-circle', error: 'alert-circle', info: 'info' };
   const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  t.innerHTML = `<span>${icons[type] || '💡'}</span><span>${message}</span>`;
+  t.className = `toast toast-${type}`;
+  t.setAttribute('role', 'status');
+  t.innerHTML = `<span class="toast-icon">${Icon(icons[type] || 'info', 17)}</span><span>${message}</span>`;
   toastContainer.appendChild(t);
   setTimeout(() => {
+    t.style.transition = 'opacity .3s ease';
     t.style.opacity = '0';
-    setTimeout(() => t.remove(), 300);
-  }, 3200);
+    setTimeout(() => t.remove(), 320);
+  }, 3400);
 }
 
 export function renderNavbar() {
   const isAdmin = isAdminLoggedIn();
   return `
-    <div class="top-announcement-strip">Gyan International School</div>
-    <nav class="navbar">
-      <a class="navbar-brand" href="/#/">
-        <div class="logo-clay-wrapper">
-          <img src="logo.png" alt="Gyan International School Logo" class="brand-logo-img">
+    <nav class="navbar" aria-label="Primary">
+      <div class="nav-inner">
+        <a class="nav-brand" href="#/">
+          <img src="/logo.png" alt="Gyan International School" class="brand-logo">
+          <span class="brand-text">
+            <span class="brand-title">Gyan's Quiz Arena</span>
+            <span class="brand-sub">Gyan International School</span>
+          </span>
+        </a>
+        <div class="nav-actions">
+          <a class="nav-link" href="#/">${Icon('home', 15)}<span>Home</span></a>
+          ${isAdmin ? `
+            <a class="nav-link" href="#/admin">${Icon('layout', 15)}<span>Admin</span></a>
+            <button class="btn btn-secondary btn-sm" id="btn-nav-logout">${Icon('log-out', 15)}<span>Logout</span></button>
+          ` : `
+            <a href="#/admin-login" class="btn btn-secondary btn-sm">${Icon('lock', 14)}<span>Admin Login</span></a>
+          `}
         </div>
-        <div style="display:flex; flex-direction:column">
-          <span class="brand-title">Gyan's Quiz Arena</span>
-          <span class="brand-subtitle">Gyan International School</span>
-        </div>
-      </a>
-      <div class="navbar-actions">
-        <a href="/#/" class="btn btn-ghost btn-sm">Home</a>
-        ${isAdmin ? `
-          <a href="/#/admin" class="btn btn-primary btn-sm">⚙️ Admin Portal</a>
-        ` : `
-          <a href="/#/admin-login" class="btn btn-secondary btn-sm">🔒 Admin Login</a>
-        `}
       </div>
     </nav>`;
 }
 
-export function showModal(title, content, onConfirm) {
+// Post-render hook: bind the navbar logout button when rendered by a page.
+export function bindNavbar(app) {
+  app.querySelector('#btn-nav-logout')?.addEventListener('click', () => {
+    import('./auth.js').then(({ adminLogout }) => {
+      adminLogout();
+      showToast('Logged out of Admin Portal');
+      window.location.hash = '#/';
+    });
+  });
+}
+
+export function showModal(title, content, onConfirm, opts = {}) {
+  const confirmText = opts.confirmText || 'Confirm';
+  const cancelText = opts.cancelText || 'Cancel';
+  const danger = opts.danger ? ' btn-danger' : '';
   const o = document.createElement('div');
   o.className = 'modal-overlay';
-  o.innerHTML = `<div class="modal-clay scale-in">
-    <h3 style="font-size: 1.3rem; margin-bottom: 0.75rem; font-weight:800">${title}</h3>
-    <div style="font-size: 0.95rem; color: var(--text-sub); margin-bottom: 1.5rem">${content}</div>
-    <div style="display:flex; gap: 0.75rem; justify-content: center">
-      <button class="btn btn-secondary btn-sm" id="modal-cancel">Cancel</button>
-      <button class="btn btn-primary btn-sm" id="modal-confirm">Confirm</button>
-    </div>
-  </div>`;
+  o.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
+      <div class="modal-title">${title}</div>
+      <div class="modal-desc">${content}</div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-sm" id="modal-cancel">${cancelText}</button>
+        <button class="btn btn-primary btn-sm ${danger}" id="modal-confirm">${confirmText}</button>
+      </div>
+    </div>`;
   document.body.appendChild(o);
   requestAnimationFrame(() => o.classList.add('active'));
   const close = () => {
     o.classList.remove('active');
-    setTimeout(() => o.remove(), 300);
+    setTimeout(() => o.remove(), 180);
   };
-  o.querySelector('#modal-cancel').onclick = close;
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  o.querySelector('#modal-cancel').onclick = () => { document.removeEventListener('keydown', onKey); close(); };
   o.querySelector('#modal-confirm').onclick = () => {
+    document.removeEventListener('keydown', onKey);
     close();
     if (onConfirm) onConfirm();
   };
-  o.addEventListener('click', e => {
-    if (e.target === o) close();
-  });
+  o.addEventListener('click', e => { if (e.target === o) { document.removeEventListener('keydown', onKey); close(); } });
+  setTimeout(() => o.querySelector('#modal-confirm')?.focus(), 20);
 }
 
 export function formatTime(seconds) {
@@ -93,22 +113,17 @@ export function escapeHtml(str) {
 
 export async function copyTextToClipboard(text) {
   if (!text) return false;
-  // Prefer modern clipboard API when available (requires secure context)
   if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
     try {
       await navigator.clipboard.writeText(text);
       return true;
     } catch (e) {
       console.warn('navigator.clipboard.writeText failed:', e);
-      // fall through to legacy approach
     }
   }
-
-  // Legacy fallback using a temporary textarea and execCommand
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
-    // Prevent scrolling to bottom
     ta.style.position = 'fixed';
     ta.style.left = '-9999px';
     document.body.appendChild(ta);
