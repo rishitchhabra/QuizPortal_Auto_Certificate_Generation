@@ -623,6 +623,18 @@ input, textarea, select { font-family: inherit; }
 .achievement .ach-name { font-family: var(--font-display); font-size: 14px; font-weight: 800; color: var(--text); }
 .achievement .ach-sub { font-size: 12px; color: var(--text-2); }
 
+/* Results achievement chips */
+.achievement-strip .ach-badge {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 8px 14px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 999px; box-shadow: var(--shadow-xs);
+}
+.achievement-strip .ach-ic {
+  width: 32px; height: 32px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.achievement-strip .ach-label { font-size: 13.5px; font-weight: 800; color: var(--text-2); }
+
 /* Footer */
 .footer { border-top: 1px solid var(--border); margin-top: 80px; background: var(--surface); }
 .footer-inner { max-width: 1280px; margin: 0 auto; padding: 40px 24px; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
@@ -643,10 +655,13 @@ input, textarea, select { font-family: inherit; }
 .quiz-panel .logo { width: 48px; height: 48px; margin: 0 auto 14px; }
 .quiz-intro { text-align: center; }
 .quiz-intro-icon {
-  width: 72px; height: 72px; border-radius: var(--r-lg); margin: 0 auto 18px;
+  width: 76px; height: 76px; border-radius: var(--r-lg); margin: 0 auto 18px;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--grad-brand); color: #fff; box-shadow: 0 12px 28px rgba(91, 95, 239, 0.32);
   animation: floaty 5s ease-in-out infinite;
+}
+.quiz-intro-icon[style*="--subj"] {
+  background: linear-gradient(135deg, var(--subj), color-mix(in srgb, var(--subj) 70%, #fff));
 }
 .quiz-intro-title {
   font-family: var(--font-display); font-size: 30px; font-weight: 800;
@@ -696,6 +711,45 @@ input, textarea, select { font-family: inherit; }
   color: var(--text); margin-bottom: 16px;
 }
 
+/* Prominent Google sign-in callout (kid-attention grabber) */
+.signin-promo {
+  margin-top: 28px;
+  border-radius: var(--r-xl);
+  background: linear-gradient(135deg, var(--subj), color-mix(in srgb, var(--subj) 55%, var(--primary)));
+  color: #fff;
+  padding: 10px;
+  position: relative; overflow: hidden;
+  box-shadow: 0 16px 36px rgba(91, 95, 239, 0.28);
+}
+.signin-promo-bubbles {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle at 20% 30%, rgba(255,255,255,0.18) 0, transparent 90px),
+    radial-gradient(circle at 85% 20%, rgba(255,255,255,0.14) 0, transparent 120px),
+    radial-gradient(circle at 70% 90%, rgba(255,255,255,0.12) 0, transparent 100px);
+}
+.signin-promo-inner {
+  position: relative; text-align: center;
+  background: rgba(255,255,255,0.12); border-radius: var(--r-lg);
+  padding: 32px 28px; backdrop-filter: blur(2px);
+}
+.signin-promo-icon {
+  width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: var(--primary);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+  animation: floaty 3.5s ease-in-out infinite;
+}
+.signin-promo-title {
+  font-family: var(--font-display); font-size: 21px; font-weight: 800; line-height: 1.25;
+}
+.signin-promo-sub { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.92); margin: 8px auto 20px; max-width: 440px; line-height: 1.55; }
+.google-btn-wrap {
+  display: flex; justify-content: center;
+  margin-top: 4px;
+}
+.google-btn-wrap iframe,
+.google-btn-wrap #google-btn-container > * { border-radius: 10px !important; box-shadow: 0 6px 18px rgba(0,0,0,0.22); }
+
 /* ==========================================================================
    Quiz taking — immersive
    ========================================================================== */
@@ -710,6 +764,17 @@ input, textarea, select { font-family: inherit; }
   gap: 16px; padding: 14px 16px;
 }
 .quiz-head-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.quiz-head-right { display: flex; align-items: center; gap: 14px; }
+.quiz-progress {
+  width: 120px; height: 12px; border-radius: 999px; overflow: hidden;
+  background: var(--surface-subtle); border: 1px solid var(--border);
+}
+.quiz-progress span {
+  display: block; height: 100%; border-radius: 999px;
+  background: var(--grad-brand);
+  transition: width .5s var(--ease);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);
+}
 .quiz-title-sm {
   font-family: var(--font-display); font-size: 15px; font-weight: 800; color: var(--text);
   max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -751,7 +816,29 @@ input, textarea, select { font-family: inherit; }
 }
 .question-card.has-error { border-color: var(--red); box-shadow: 0 0 0 4px var(--red-soft); }
 .question-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.q-chip {
+  width: 34px; height: 34px; border-radius: var(--r-sm); flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 15px; font-weight: 800; color: #fff;
+  background: var(--subj, var(--primary));
+  box-shadow: 0 4px 10px color-mix(in srgb, var(--subj, var(--primary)) 45%, transparent);
+}
+.pts-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber-border);
+  font-size: 13px; font-weight: 800;
+}
+.pts-pill .icon { color: var(--amber); }
 .question-text { font-size: 19px; font-weight: 700; line-height: 1.5; margin-bottom: 22px; }
+
+/* Colorful option letter chips (A–F cycle) */
+.opt-letter-1 { background: var(--blue-soft); color: var(--blue-strong); }
+.opt-letter-2 { background: var(--purple-soft); color: var(--purple-strong); }
+.opt-letter-3 { background: var(--cyan-soft); color: var(--cyan-strong); }
+.opt-letter-4 { background: var(--green-soft); color: var(--green-strong); }
+.opt-letter-5 { background: var(--amber-soft); color: var(--amber); }
+.opt-letter-6 { background: var(--pink-soft); color: var(--pink-strong); }
 
 .quiz-option {
   display: flex; align-items: center; gap: 14px; width: 100%;
@@ -1073,4 +1160,7 @@ input, textarea, select { font-family: inherit; }
   .inner-table { display: block; overflow-x: auto; }
   .quiz-panel { padding: 24px 18px; }
   .achievement-strip { justify-content: center; gap: 16px; }
+  .quiz-progress { width: 80px; }
+  .quiz-head-inner { flex-wrap: wrap; row-gap: 10px; }
+  .quiz-head-right { width: 100%; justify-content: space-between; }
 }

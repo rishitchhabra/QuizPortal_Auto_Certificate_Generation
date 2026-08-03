@@ -2,7 +2,7 @@ import {
   getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions,
   getAllCertTemplates, deleteCertTemplate
 } from '../store.js';
-import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
+import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bindNavbar, subjectFor } from '../utils.js';
 import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
 import { Icon, Badge, Btn, StatCard, EmptyState, SectionHead, Dropdown, IconBtn, Inp, Field } from '../components.js';
 
@@ -464,6 +464,7 @@ function renderQuizRow(quiz, subsCount) {
   const desc = quiz.description || 'No description provided';
   const statusTone = isLive ? 'green' : 'gray';
   const statusLabel = isLive ? 'Live' : 'Draft';
+  const subj = subjectFor(title);
   const items = [
     { id: 'copy', label: 'Copy link', icon: 'link' },
     { id: 'responses', label: 'Responses', icon: 'users' },
@@ -476,7 +477,7 @@ function renderQuizRow(quiz, subsCount) {
       <td>${Badge(statusLabel, { tone: statusTone, dot: true })}</td>
       <td>
         <div class="quiz-name">
-          <span class="quiz-name-ic ${isLive ? '' : 'muted'}">${Icon(isLive ? 'list-checks' : 'file-text', 18)}</span>
+          <span class="quiz-name-ic ${subj.cls}" style="${isLive ? '' : 'filter:saturate(.4); opacity:.6'}">${Icon(subj.icon, 18)}</span>
           <div style="min-width:0">
             <div class="quiz-title">${escapeHtml(title)}</div>
             <div class="quiz-desc-sub">${escapeHtml(desc)}</div>

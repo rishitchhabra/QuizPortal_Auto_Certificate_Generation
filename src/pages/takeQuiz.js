@@ -1,5 +1,5 @@
 import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getGoogleUser, generateCertificatePdf } from '../store.js';
-import { renderNavbar, showToast, formatTime, shuffleArray, showModal, escapeHtml, bindNavbar } from '../utils.js';
+import { renderNavbar, showToast, formatTime, shuffleArray, showModal, escapeHtml, bindNavbar, subjectFor, burstConfetti } from '../utils.js';
 import { initGoogleAuth, renderGoogleButton, getGoogleClientId } from '../auth.js';
 import { Icon, Badge } from '../components.js';
 
@@ -64,12 +64,17 @@ function renderNotice(app, { icon, title, desc }) {
     </div>`;
 }
 
+function quizSubject() {
+  return subjectFor(quiz?.title || '');
+}
+
 function quizIntroHeader() {
   const totalPts = quiz.questions.reduce((s, q) => s + (q.points || 1), 0);
   const hasCert = !!quiz.certificateTemplateId;
+  const subj = quizSubject();
   return `
     <div class="quiz-intro">
-      <div class="quiz-intro-icon">${Icon('book-open', 22)}</div>
+      <span class="quiz-intro-icon ${subj.cls}" style="--subj:${subj.color}">${Icon(subj.icon, 24)}</span>
       <div class="eyebrow">${Icon('graduation-cap', 13)}<span>Gyan International School · Assessment</span></div>
       <h1 class="quiz-intro-title">${escapeHtml(quiz.title)}</h1>
       ${quiz.description ? `<p class="quiz-intro-desc">${escapeHtml(quiz.description)}</p>` : ''}
@@ -108,6 +113,7 @@ function quizIntroHeader() {
 }
 
 function renderGoogleSignIn(app, clientId) {
+  const subj = quizSubject();
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
@@ -115,16 +121,15 @@ function renderGoogleSignIn(app, clientId) {
         <div class="quiz-panel" style="text-align:left">
           ${quizIntroHeader()}
 
-          <div class="quiz-account-group">
-            <div class="account-group-head">
-              <div class="stat-icon stat-blue" style="width:36px; height:36px">${Icon('user', 17)}</div>
-              <div>
-                <div style="font-weight:600; font-size:15px">Sign in to begin</div>
-                <div class="xs muted">Your verified Google account records your attempt.</div>
-              </div>
+          <div class="signin-promo ${subj.cls}" style="--subj:${subj.color}">
+            <div class="signin-promo-bubbles"></div>
+            <div class="signin-promo-inner">
+              <div class="signin-promo-icon">${Icon('sparkles', 24)}</div>
+              <div class="signin-promo-title">Almost there — sign in to play!</div>
+              <div class="signin-promo-sub">One quick Google sign-in unlocks your attempt, saves your score and lets you download your certificate.</div>
+              <div id="google-btn-container" class="google-btn-wrap"></div>
+              <p class="xs text-3" style="margin-top:14px; text-align:center">Only your name and email address are recorded with your submission.</p>
             </div>
-            <div id="google-btn-container" style="margin-top:16px"></div>
-            <p class="xs text-3" style="margin-top:12px; text-align:center">Only your name and email address are recorded with your submission.</p>
           </div>
         </div>
       </div>
@@ -199,7 +204,7 @@ async function renderParticipantForm(app) {
             </div>
           ` : ''}
 
-          <button class="btn btn-primary btn-lg btn-block" id="btn-start-quiz" style="height:52px; font-size:16px">${Icon('play', 17)}<span>Begin Quiz</span></button>
+          <button class="btn btn-fun btn-lg btn-block" id="btn-start-quiz" style="height:56px; font-size:17px">${Icon('play', 18)}<span>Begin Quiz</span></button>
           <p class="xs text-3" style="text-align:center; margin-top:12px">The timer starts the moment you continue.</p>
         </div>
       </div>
@@ -245,6 +250,7 @@ function fieldLabel(label, required) {
 function renderContinuousQuizShell(app) {
   const total = quiz.questions.length;
   const letters = 'ABCDEFGHIJ';
+  const subj = quizSubject();
 
   app.innerHTML = `
     ${renderNavbar()}
@@ -252,10 +258,13 @@ function renderContinuousQuizShell(app) {
       <div class="quiz-head">
         <div class="quiz-head-inner">
           <div class="quiz-head-left">
-            <span class="sm text-2" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(quiz.title)}</span>
+            <span class="quiz-title-sm" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(quiz.title)}</span>
             <span class="answered-count" id="answered-count">0 of ${total} answered</span>
           </div>
-          <div id="timer" class="timer-pill">${Icon('timer', 15)}<span>${formatTime(timeLeft)}</span></div>
+          <div class="quiz-head-right">
+            <div class="quiz-progress" id="quiz-progress"><span id="quiz-progress-fill" style="width:0%"></span></div>
+            <div id="timer" class="timer-pill">${Icon('timer', 15)}<span>${formatTime(timeLeft)}</span></div>
+          </div>
         </div>
       </div>
 
@@ -265,10 +274,11 @@ function renderContinuousQuizShell(app) {
             <section class="question-card" id="q-block-${i}" aria-labelledby="q-title-${i}">
               <div class="question-card-top">
                 <div class="flex items-center gap-sm">
+                  <span class="q-chip ${subj.cls}" style="--subj:${subj.color}">${i + 1}</span>
                   <span class="badge badge-gray">Question ${i + 1} of ${total}</span>
-                  ${q.required !== false ? `<span class="badge badge-red">Required</span>` : ''}
+                  ${q.required !== false ? `<span class="badge badge-amber">${Icon('alert-circle', 11)} Required</span>` : ''}
                 </div>
-                <span class="sm text-2" style="font-weight:600">${q.points || 1} pt${(q.points || 1) > 1 ? 's' : ''}</span>
+                <span class="pts-pill">${Icon('star', 13)}<span>${q.points || 1} pt${(q.points || 1) > 1 ? 's' : ''}</span></span>
               </div>
 
               <div id="err-banner-${i}"></div>
@@ -278,14 +288,17 @@ function renderContinuousQuizShell(app) {
               <div class="options-group" data-qi="${i}">
                 ${q.type === 'tf' ? `
                   <button class="quiz-option ${answers[i] === 'true' ? 'selected' : ''}" data-qi="${i}" data-answer="true">
-                    <span class="opt-letter">T</span><span>True</span>
+                    <span class="opt-letter">${Icon('check', 16)}</span><span>True</span>
+                    <span class="opt-check">${Icon('check-circle', 20)}</span>
                   </button>
                   <button class="quiz-option ${answers[i] === 'false' ? 'selected' : ''}" data-qi="${i}" data-answer="false">
-                    <span class="opt-letter">F</span><span>False</span>
+                    <span class="opt-letter">${Icon('x', 16)}</span><span>False</span>
+                    <span class="opt-check">${Icon('check-circle', 20)}</span>
                   </button>
                 ` : (q.options || []).map((opt, oi) => `
                   <button class="quiz-option ${answers[i] === oi.toString() ? 'selected' : ''}" data-qi="${i}" data-answer="${oi}">
-                    <span class="opt-letter">${letters[oi]}</span><span>${escapeHtml(opt)}</span>
+                    <span class="opt-letter opt-letter-${(oi % 6) + 1}">${letters[oi]}</span><span>${escapeHtml(opt)}</span>
+                    <span class="opt-check">${Icon('check-circle', 20)}</span>
                   </button>
                 `).join('')}
               </div>
@@ -295,7 +308,7 @@ function renderContinuousQuizShell(app) {
           <div class="quiz-panel" style="margin-top:4px">
             <h3 style="font-size:19px; font-weight:800; letter-spacing:-0.01em">Ready to submit?</h3>
             <p style="color:var(--text-2); font-size:14.5px; margin:8px 0 20px">Make sure you have answered all required questions before submitting your evaluation.</p>
-            <button class="btn btn-primary btn-lg" id="btn-submit-continuous" style="width:100%; max-width:420px">
+            <button class="btn btn-fun btn-lg" id="btn-submit-continuous" style="width:100%; max-width:420px">
               ${Icon('check-circle', 17)}<span>Complete &amp; Submit Quiz</span>
             </button>
           </div>
@@ -333,6 +346,11 @@ function updateProgress() {
   const total = quiz.questions.length;
   const el = document.getElementById('answered-count');
   if (el) el.textContent = `${answered} of ${total} answered`;
+  const fill = document.getElementById('quiz-progress-fill');
+  if (fill) {
+    const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
+    fill.style.width = pct + '%';
+  }
 }
 
 function validateAndSubmit() {
@@ -464,24 +482,32 @@ function renderResults(submission) {
         <div class="container-take">
 
           ${showSummary ? `
-            <div class="card score-hero" style="margin-bottom:20px">
+            <div class="card score-hero ${submission.passed ? 'passed' : ''}" style="margin-bottom:20px">
               <div class="score-ring ${submission.passed ? 'passed' : ''}">
                 <svg viewBox="0 0 132 132" aria-hidden="true">
                   <circle class="ring-bg" cx="66" cy="66" r="${R}" stroke-width="10" fill="none"></circle>
                   <circle class="ring-fg" cx="66" cy="66" r="${R}" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="${CIRC}" stroke-dashoffset="${offset}"></circle>
                 </svg>
                 <div class="ring-label">
-                  <span class="ring-val">${pct}%</span>
+                  <span class="ring-val" id="ring-val">${pct}%</span>
                   <span class="ring-cap">score</span>
                 </div>
               </div>
               <div style="flex:1; text-align:left">
-                <div class="flex gap-sm" style="margin-bottom:8px">
+                <div class="flex gap-sm" style="margin-bottom:8px; flex-wrap:wrap">
                   ${Badge(submission.passed ? 'Passed' : 'Not passed', { tone: submission.passed ? 'green' : 'red', dot: true })}
+                  ${submission.percent >= 90 ? Badge('Excellent!', { tone: 'violet', dot: true }) : ''}
                 </div>
                 <h2 class="score-hero-title">${submission.passed ? 'Evaluation passed!' : 'Evaluation complete'}</h2>
                 <p class="score-hero-sub">${submission.passed ? 'Great job — you met the passing threshold.' : `You needed at least ${quiz.passingPercent}% to pass.`}</p>
               </div>
+            </div>
+
+            <div class="achievement-strip" style="margin:0 0 20px">
+              <div class="ach-badge"><span class="ach-ic stat-amber">${Icon('zap', 18)}</span><span class="ach-label">Participation</span></div>
+              <div class="ach-badge"><span class="ach-ic stat-blue">${Icon('clock', 18)}</span><span class="ach-label">${formatTime(submission.timeTaken)}</span></div>
+              <div class="ach-badge"><span class="ach-ic stat-green">${Icon('check-circle', 18)}</span><span class="ach-label">${submission.questionResults?.filter(r => r.correct).length || 0} correct</span></div>
+              ${submission.percent >= 90 ? `<div class="ach-badge"><span class="ach-ic stat-violet">${Icon('star', 18)}</span><span class="ach-label">Top scorer</span></div>` : ''}
             </div>
 
             <div class="stat-grid" style="margin-bottom:20px">
@@ -553,6 +579,10 @@ function renderResults(submission) {
 
     bindNavbar(app);
     bindReviewAccordions(app);
+
+    if (showSummary && submission.passed) {
+      burstConfetti({ count: submission.percent >= 90 ? 110 : 70 });
+    }
 
     if (showCert && certTemplate) {
       if (isPptx) {
