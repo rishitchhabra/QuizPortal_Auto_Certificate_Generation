@@ -120,17 +120,58 @@ export function renderDashboard(app) {
 
       <!-- FOOTER -->
       <footer class="footer">
-        <div class="footer-inner">
-          <div class="footer-brand">
-            <img src="/logo.png" alt="Gyan International School" style="height:28px; width:auto">
-            <div>
-              <div class="footer-title">Gyan's Quiz Arena</div>
-              <div class="footer-copy">Interactive assessments &amp; certificates</div>
+        <div class="footer-top">
+          <div class="footer-grid">
+            <div class="footer-brand">
+              <div class="footer-brand-row">
+                <img src="/logo.png" alt="Gyan International School" style="height:34px; width:auto">
+                <div>
+                  <div class="footer-title">Gyan's Quiz Arena</div>
+                  <div class="footer-copy" style="margin-top:2px">Interactive assessments &amp; certificates</div>
+                </div>
+              </div>
+              <p class="footer-copy">A modern assessment platform for Gyan International School — timed online quizzes, verified Google sign-in and instant branded certificates for every student.</p>
+              <div class="footer-social">
+                <a href="#/" aria-label="Facebook">${Icon('share', 17)}</a>
+                <a href="#/" aria-label="X / Twitter">${Icon('more-horizontal', 17)}</a>
+                <a href="#/" aria-label="Instagram">${Icon('camera', 17)}</a>
+                <a href="#/" aria-label="YouTube">${Icon('play', 17)}</a>
+              </div>
+            </div>
+            <div class="footer-col">
+              <h4>Navigate</h4>
+              <ul>
+                <li><a href="#/">Home</a></li>
+                <li><a href="#/admin">Admin Portal</a></li>
+                <li><a href="#/admin-login">Teacher Login</a></li>
+              </ul>
+            </div>
+            <div class="footer-col">
+              <h4>Platform</h4>
+              <ul>
+                <li><a href="#/">How it works</a></li>
+                <li><a href="#/">Quiz features</a></li>
+                <li><a href="#/">Certificates</a></li>
+                <li><a href="#/">Help center</a></li>
+              </ul>
+            </div>
+            <div class="footer-col">
+              <h4>Contact</h4>
+              <ul>
+                <li><a href="#/">Gyan International School</a></li>
+                <li><a href="#/">support@gyan.edu</a></li>
+                <li><a href="#/">+91 000 000 0000</a></li>
+                <li><a href="#/">Mon–Fri · 9:00 AM – 5:00 PM</a></li>
+              </ul>
             </div>
           </div>
+        </div>
+        <div class="footer-bottom">
+          <div class="footer-legal">© ${new Date().getFullYear()} Gyan International School · Gyan's Quiz Arena. All rights reserved.</div>
           <div class="footer-links">
-            <a href="#/">Home</a>
-            <a href="#/admin-login">Admin Login</a>
+            <a href="#/">Privacy Policy</a>
+            <a href="#/">Terms of Use</a>
+            <a href="#/">Accessibility</a>
           </div>
         </div>
       </footer>

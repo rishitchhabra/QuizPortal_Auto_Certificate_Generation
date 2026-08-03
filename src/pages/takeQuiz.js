@@ -258,7 +258,7 @@ function renderContinuousQuizShell(app) {
       <div class="quiz-head">
         <div class="quiz-head-inner">
           <div class="quiz-head-left">
-            <span class="quiz-title-sm" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(quiz.title)}</span>
+            <span class="quiz-title-sm" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(quiz.title)}</span>
             <span class="answered-count" id="answered-count">0 of ${total} answered</span>
           </div>
           <div class="quiz-head-right">
