@@ -51,6 +51,7 @@ export async function renderQuizBuilder(app, params) {
       collectOrg: false,
       authMode: 'google',
       allowedBatches: [],
+      instructions: '',
       limitPerUser: true,
       questions: [],
       createdAt: new Date().toISOString()
@@ -132,7 +133,8 @@ function renderGeneralTab() {
         <div class="q-editor-top"><div class="q-editor-title">Quiz details</div></div>
         <div class="panel">
           ${Field({ label: 'Quiz title', required: true, htmlFor: 'quiz-title', control: Inp({ id: 'quiz-title', value: currentQuiz.title, placeholder: 'e.g. General Chemistry — Final Assessment', className: 'input-lg' }) })}
-          ${Field({ label: 'Description & instructions', htmlFor: 'quiz-desc', hint: 'Shown to participants before they begin.', control: Txta({ id: 'quiz-desc', value: currentQuiz.description, rows: 4, placeholder: 'Brief instructions for participants…' }) })}
+          ${Field({ label: 'Description', htmlFor: 'quiz-desc', hint: 'Short summary shown in the quiz intro.', control: Txta({ id: 'quiz-desc', value: currentQuiz.description, rows: 3, placeholder: 'What is this quiz about?' }) })}
+          ${Field({ label: 'Special instructions', htmlFor: 'quiz-instructions', hint: 'Optional. Shown on the pre-quiz screen after sign-in, right above Begin Quiz. Leave empty to hide.', control: Txta({ id: 'quiz-instructions', value: currentQuiz.instructions, rows: 5, placeholder: 'e.g. Read every question carefully. No negative marking. Answers are final once you submit…' }) })}
         </div>
       </div>
 
@@ -506,6 +508,7 @@ function bindEvents(app) {
     markDirty();
   });
   app.querySelector('#quiz-desc')?.addEventListener('input', e => { currentQuiz.description = e.target.value; markDirty(); });
+  app.querySelector('#quiz-instructions')?.addEventListener('input', e => { currentQuiz.instructions = e.target.value; markDirty(); });
   app.querySelector('#quiz-timer')?.addEventListener('input', e => { currentQuiz.timerMinutes = parseInt(e.target.value) || 0; markDirty(); });
   app.querySelector('#quiz-passing')?.addEventListener('input', e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); });
   app.querySelector('#quiz-deadline')?.addEventListener('input', e => { currentQuiz.deadline = e.target.value || ''; markDirty(); });

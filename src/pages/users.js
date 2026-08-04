@@ -1,5 +1,5 @@
 import { getUsers, addUser, deleteUser, bulkDeleteUsers, getBatches, importUsers } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar, renderAccessDenied, showModal } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, renderAccessDenied, showModal, sortBatches } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
 
@@ -16,7 +16,7 @@ export async function renderUsers(app) {
   const users = await getUsers(filter).catch(() => []);
 
   const distinctClasses = Array.from(new Set(users.map(u => u.classSection || '')));
-  const groupKeys = distinctClasses.sort((a, b) => (a === '' ? 1 : 0) - (b === '' ? 1 : 0));
+  const groupKeys = sortBatches(distinctClasses);
   const grouped = {};
   groupKeys.forEach(c => { grouped[c] = []; });
   users.forEach(u => { (grouped[u.classSection || ''] = grouped[u.classSection || ''] || []).push(u); });
@@ -58,7 +58,7 @@ export async function renderUsers(app) {
           </div>
           <select class="input select" id="batch-filter" style="width:auto" aria-label="Filter by batch">
             <option value="">All batches</option>
-            ${batches.map(b => `<option value="${escapeHtml(b)}" ${filter.classSection === b ? 'selected' : ''}>${escapeHtml(b)}</option>`).join('')}
+            ${sortBatches(batches).map(b => `<option value="${escapeHtml(b)}" ${filter.classSection === b ? 'selected' : ''}>${escapeHtml(b)}</option>`).join('')}
           </select>
         </div>
 

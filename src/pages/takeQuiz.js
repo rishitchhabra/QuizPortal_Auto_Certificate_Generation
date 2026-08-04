@@ -164,6 +164,27 @@ function quizSubject() {
   return subjectFor(quiz?.title || '');
 }
 
+// Hero block: quiz title as the hero, student details as a subtle, non-hero strip.
+function attemptHeroBlock(p = participant) {
+  const subj = quizSubject();
+  const name = escapeHtml(p?.name || 'Participant');
+  const cls = p?.classSection ? escapeHtml(p.classSection) : '';
+  const uid = p?.userId ? escapeHtml(p.userId) : '';
+  return `
+    <div class="attempt-hero">
+      <div class="attempt-hero-eyebrow">${Icon(subj.icon, 13)}<span>${quiz.questions.length} Questions · ${quiz.timerMinutes || 30} min</span></div>
+      <h1 class="attempt-hero-title">${escapeHtml(quiz.title || 'Untitled quiz')}</h1>
+      ${quiz.description ? `<p class="attempt-hero-desc">${escapeHtml(quiz.description)}</p>` : ''}
+    </div>
+    <div class="attempt-student">
+      <span class="attempt-student-avatar">${Icon('user', 14)}</span>
+      <span class="attempt-student-name">${name}</span>
+      ${cls ? `<span class="attempt-student-sep">·</span><span class="attempt-student-class">${cls}</span>` : ''}
+      ${uid ? `<span class="attempt-student-sep">·</span><span class="attempt-student-uid">${uid}</span>` : ''}
+    </div>
+  `;
+}
+
 function quizIntroHeader() {
   const totalPts = quiz.questions.reduce((s, q) => s + (q.points || 1), 0);
   const hasCert = !!quiz.certificateTemplateId;
@@ -262,6 +283,8 @@ async function renderParticipantForm(app) {
   }
 
   const guser = getGoogleUser();
+  const isUserIdAuth = !!participant.userId;
+  const instructions = (quiz.instructions || '').trim();
 
   app.innerHTML = `
     ${renderNavbar()}
@@ -272,14 +295,26 @@ async function renderParticipantForm(app) {
 
           <div class="quiz-account-group">
             <div class="account-group-head">
-              ${guser?.picture ? `<img src="${guser.picture}" alt="" style="width:38px; height:38px; border-radius:50%">` : `<div class="stat-icon stat-gray" style="width:38px; height:38px">${Icon('user', 17)}</div>`}
+              ${guser?.picture ? `<img src="${guser.picture}" alt="" style="width:40px; height:40px; border-radius:50%">` : `<div class="stat-icon stat-gray" style="width:40px; height:40px">${Icon('user', 18)}</div>`}
               <div style="flex:1; min-width:0">
-                <div style="font-weight:600; font-size:14px">${escapeHtml(participant.name || 'Participant')}</div>
-                <div class="xs muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(participant.email || '')}</div>
+                <div style="font-weight:700; font-size:15px">${escapeHtml(participant.name || 'Participant')}</div>
+                ${isUserIdAuth ? `
+                  <div class="acct-class">${escapeHtml(participant.classSection || 'Unassigned class')}</div>
+                  <div class="acct-userid">${Icon('id-badge', 12)}<span>${escapeHtml(participant.userId)}</span></div>
+                ` : `
+                  <div class="xs muted" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(participant.email || '')}</div>
+                `}
               </div>
               ${Badge('Verified', { tone: 'green', dot: true })}
             </div>
           </div>
+
+          ${instructions ? `
+            <div class="quiz-instructions">
+              <div class="quiz-instructions-title">${Icon('info', 15)}<span>Instructions</span></div>
+              <div class="quiz-instructions-body">${escapeHtml(instructions)}</div>
+            </div>
+          ` : ''}
 
           ${(quiz.collectPhone || quiz.collectOrg || (quiz.customFields || []).length > 0) ? `
             <div class="quiz-form-group">
@@ -300,7 +335,7 @@ async function renderParticipantForm(app) {
             </div>
           ` : ''}
 
-          <button class="btn btn-fun btn-lg btn-block" id="btn-start-quiz" style="height:56px; font-size:17px">${Icon('play', 18)}<span>Begin Quiz</span></button>
+          <button class="btn btn-fun btn-lg btn-block" id="btn-start-quiz" style="height:56px; font-size:17px; margin-top:6px">${Icon('play', 18)}<span>Begin Quiz</span></button>
           <p class="xs text-3" style="text-align:center; margin-top:12px">The timer starts the moment you continue.</p>
         </div>
       </div>
@@ -365,6 +400,7 @@ function renderContinuousQuizShell(app) {
       </div>
 
       <div class="container-take" style="padding-top:28px">
+        ${attemptHeroBlock()}
         <div class="continuous-quiz-container">
           ${quiz.questions.map((q, i) => `
             <section class="question-card" id="q-block-${i}" aria-labelledby="q-title-${i}">
@@ -403,9 +439,9 @@ function renderContinuousQuizShell(app) {
 
           <div class="quiz-panel" style="margin-top:4px">
             <h3 style="font-size:19px; font-weight:800; letter-spacing:-0.01em">Ready to submit?</h3>
-            <p style="color:var(--text-2); font-size:14.5px; margin:8px 0 20px">Make sure you have answered all required questions before submitting your evaluation.</p>
-            <button class="btn btn-fun btn-lg" id="btn-submit-continuous" style="width:100%; max-width:420px">
-              ${Icon('check-circle', 17)}<span>Complete &amp; Submit Quiz</span>
+            <p style="color:var(--text-2); font-size:14.5px; margin:8px 0 22px">Make sure you have answered all required questions before submitting your evaluation.</p>
+            <button class="btn btn-submit" id="btn-submit-continuous">
+              ${Icon('check-circle', 18)}<span>Complete &amp; Submit Quiz</span>
             </button>
           </div>
         </div>
@@ -576,6 +612,7 @@ function renderResults(submission) {
       ${renderNavbar()}
       <div class="page fade-in">
         <div class="container-take">
+          ${attemptHeroBlock(submission.participant || participant)}
 
           ${showSummary ? `
             <div class="card score-hero ${submission.passed ? 'passed' : ''}" style="margin-bottom:20px">

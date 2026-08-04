@@ -1,5 +1,5 @@
 import { getAllQuizzes, getQuizReport } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar, formatTime, copyTextToClipboard, renderAccessDenied } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, formatTime, copyTextToClipboard, renderAccessDenied, sortBatches } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState } from '../components.js';
 import { requireAdmin, hasPermission, currentUser } from '../auth.js';
 import * as XLSX from 'xlsx';
@@ -101,6 +101,9 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
 
   const qAccuracy = report.studentRows.filter(r => r.attempted).length;
 
+  const studentBatches = sortBatches(Array.from(new Set(report.studentRows.map(s => s.classSection || ''))));
+  const sortedBatchSummary = sortBatches(report.batches.map(b => b.batch || '')).map(name => report.batches.find(b => (b.batch || '') === name)).filter(Boolean);
+
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
@@ -144,7 +147,7 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
                 </tr>
               </thead>
               <tbody>
-                ${report.batches.map(b => `
+                ${sortedBatchSummary.map(b => `
                   <tr>
                     <td><strong>${escapeHtml(b.batch || 'Unassigned')}</strong></td>
                     <td class="mono">${b.totalStudents}</td>
@@ -171,43 +174,17 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
         </div>
 
         ${report.studentRows.length > 0 ? `
-          <div class="table-wrap">
-            <div class="table-wrap-scroll">
-            <table class="table" id="student-table">
-              <thead>
-                <tr>
-                  <th style="width:40px">#</th>
-                  <th>Name</th>
-                  <th style="width:150px">User ID</th>
-                  <th style="width:90px">Batch</th>
-                  <th style="width:110px">Status</th>
-                  <th style="width:90px">Score</th>
-                  <th style="width:80px">%</th>
-                  <th style="width:100px">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${report.studentRows.map((s, i) => {
-                  const status = s.attempted
-                    ? (s.passed ? Badge('Passed / Attempted', { tone: 'green', dot: true }) : Badge('Failed', { tone: 'red', dot: true }))
-                    : Badge('Not attempted', { tone: 'gray', dot: true });
-                  const pctTone = s.percent == null ? 'gray' : s.percent >= 80 ? 'green' : s.percent >= 50 ? 'amber' : 'red';
-                  return `
-                    <tr>
-                      <td class="mono muted">${i + 1}</td>
-                      <td><span style="font-weight:600">${escapeHtml(s.name)}</span></td>
-                      <td>${Badge(s.userId, { tone: 'violet' })}</td>
-                      <td class="muted sm">${escapeHtml(s.classSection)}</td>
-                      <td>${status}</td>
-                      <td class="mono">${s.attempted ? `${s.score}/${s.totalPoints}` : '—'}</td>
-                      <td>${s.attempted ? Badge(`${s.percent}%`, { tone: pctTone }) : '—'}</td>
-                      <td class="muted sm">${s.attempted ? formatTime(s.timeTaken) : '—'}</td>
-                    </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
+          <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap">
+            <div class="search-wrap" style="flex:1; max-width:320px">
+              ${Icon('search', 16)}
+              <input type="text" class="input" id="student-search" placeholder="Search name or user ID…" style="height:40px" aria-label="Search students">
             </div>
+            <select class="input select" id="student-batch-filter" style="width:auto" aria-label="Filter by batch">
+              <option value="">All batches</option>
+              ${studentBatches.map(b => `<option value="${escapeHtml(b || '')}">${escapeHtml(b || 'Unassigned')}</option>`).join('')}
+            </select>
           </div>
+          <div id="student-wise-container"></div>
         ` : `<div class="card">${EmptyState({ icon: 'users', title: 'No students mapped', desc: 'Map batches to this quiz to see individual roll-call reports.' })}</div>`}
       </div>
     </div>`;
@@ -220,6 +197,83 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
   app.querySelector('#btn-export-students')?.addEventListener('click', () => {
     exportExcel('students', report.studentRows, report.quiz.title);
   });
+
+  const studentContainer = app.querySelector('#student-wise-container');
+  if (studentContainer) {
+    const searchInput = app.querySelector('#student-search');
+    const batchFilter = app.querySelector('#student-batch-filter');
+    let searchTerm = '';
+    let selectedBatch = '';
+
+    if (searchInput) searchInput.addEventListener('input', e => { searchTerm = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm); });
+    if (batchFilter) batchFilter.addEventListener('change', e => { selectedBatch = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm); });
+
+    renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm);
+  }
+}
+
+function renderStudentGroups(container, rows, batch, term) {
+  const q = (term || '').trim().toLowerCase();
+  const filtered = rows.filter(s => {
+    if (batch && (s.classSection || '') !== batch) return false;
+    if (q && !(s.name || '').toLowerCase().includes(q) && !(s.userId || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="card">${EmptyState({ icon: 'users', title: 'No matching students', desc: 'Try a different batch or search term.' })}</div>`;
+    return;
+  }
+
+  const groupKeys = sortBatches(Array.from(new Set(filtered.map(s => s.classSection || ''))));
+  const grouped = {};
+  groupKeys.forEach(k => { grouped[k] = filtered.filter(s => (s.classSection || '') === k); });
+
+  container.innerHTML = groupKeys.map(cls => `
+    <div style="margin-bottom:28px">
+      <div class="section-head" style="margin:0 0 14px">
+        <div>
+          <h2 class="section-title" style="font-size:18px">${escapeHtml(cls || 'Unassigned')}</h2>
+          <p class="section-sub">${grouped[cls].length} students${cls ? '' : ' · no Class-Section on record'}</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-wrap-scroll">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:40px">#</th>
+                <th>Name</th>
+                <th style="width:150px">User ID</th>
+                <th style="width:110px">Status</th>
+                <th style="width:90px">Score</th>
+                <th style="width:80px">%</th>
+                <th style="width:100px">Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${grouped[cls].map((s, i) => {
+                const status = s.attempted
+                  ? (s.passed ? Badge('Passed / Attempted', { tone: 'green', dot: true }) : Badge('Failed', { tone: 'red', dot: true }))
+                  : Badge('Not attempted', { tone: 'gray', dot: true });
+                const pctTone = s.percent == null ? 'gray' : s.percent >= 80 ? 'green' : s.percent >= 50 ? 'amber' : 'red';
+                return `
+                  <tr>
+                    <td class="mono muted">${i + 1}</td>
+                    <td><span style="font-weight:600">${escapeHtml(s.name)}</span></td>
+                    <td>${Badge(s.userId, { tone: 'violet' })}</td>
+                    <td>${status}</td>
+                    <td class="mono">${s.attempted ? `${s.score}/${s.totalPoints}` : '—'}</td>
+                    <td>${s.attempted ? Badge(`${s.percent}%`, { tone: pctTone }) : '—'}</td>
+                    <td class="muted sm">${s.attempted ? formatTime(s.timeTaken) : '—'}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function exportExcel(kind, rows, quizTitle) {

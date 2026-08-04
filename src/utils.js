@@ -210,3 +210,18 @@ export function subjectFor(title = '') {
   if (/(gk|general|current affairs|knowledge|quiz)/.test(t)) return { icon: 'globe', cls: 'subject-gk', color: 'var(--green)' };
   return { icon: 'flask', cls: 'subject-science', color: 'var(--blue)' };
 }
+
+// Sort batch / class-section labels: numeric part before the hyphen ascending,
+// then the word after the hyphen alphabetically. "Unassigned" (empty) goes last.
+export function sortBatches(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice().sort((a, b) => {
+    const ka = (a === '' || a == null) ? Infinity : (parseInt(a, 10) || 0);
+    const kb = (b === '' || b == null) ? Infinity : (parseInt(b, 10) || 0);
+    if (ka !== kb) return ka - kb;
+    const sa = String(a).split('-').slice(1).join('-').toLowerCase();
+    const sb = String(b).split('-').slice(1).join('-').toLowerCase();
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return String(a).localeCompare(String(b));
+  });
+}
