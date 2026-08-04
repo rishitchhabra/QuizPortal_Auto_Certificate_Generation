@@ -2290,7 +2290,7 @@ select {
 .signin-promo {
   margin-top: 28px;
   border-radius: var(--r-xl);
-  background: linear-gradient(135deg, var(--subj), color-mix(in srgb, var(--subj) 55%, var(--primary)));
+  background: var(--grad-brand);
   color: #fff;
   padding: 10px;
   position: relative;
