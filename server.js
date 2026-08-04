@@ -611,9 +611,11 @@ app.post('/api/submissions', asyncHandler(async (req, res) => {
    ============================================================ */
 
 function generateUserId(name) {
-  const base = (name || '').trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20) || 'student';
+  // Use only the FIRST name for the user ID
+  const parts = (name || '').trim().split(/\s+/);
+  const firstName = (parts[0] || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20) || 'student';
   const suffix = Math.floor(100 + Math.random() * 900);
-  return `${base}${suffix}`;
+  return `${firstName}${suffix}`;
 }
 
 app.get('/api/users', asyncHandler(async (req, res) => {
@@ -701,33 +703,71 @@ app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req
 
   if (!rows.length) return res.status(400).json({ error: 'No rows found in file' });
 
-  let inserted = 0, skipped = 0, errors = [];
+  let inserted = 0, skipped = 0, duplicates = 0, errors = [];
   const used = new Set();
-  const usedCombos = new Set();
-  const existing = await pool.query('SELECT user_id, name, parent_mobile FROM users');
+  const usedCombos = new Set();       // name::mobile
+  const usedNameClass = new Set();     // name::classSection (fallback when no mobile)
+  const existing = await pool.query('SELECT user_id, name, parent_mobile, class_section FROM users');
   existing.rows.forEach(r => {
     used.add(r.user_id);
     const mob = (r.parent_mobile || '').trim();
     if (mob) usedCombos.add(`${String(r.name).toLowerCase()}::${mob}`);
+    const cs = (r.class_section || '').trim();
+    if (cs) usedNameClass.add(`${String(r.name).toLowerCase()}::${cs}`);
   });
 
+  // --- Smart column detection ---
+  // Handles common Excel headers: S.No / Sno / Sr No, Name / Student Name,
+  // Batch / Class / Class-Section / Grade, Parent Mobile / Phone / Mobile No.
   const cols = Object.keys(rows[0]);
   const norm = cols.map(c => c.toLowerCase().replace(/[\s_\-().]/g, ''));
-  const nameIdx = norm.findIndex(c => c.includes('name'));
-  const classIdx = norm.findIndex(c => c.includes('class') || c.includes('section') || c.includes('grade') || c.includes('batch'));
-  const mobileIdx = norm.findIndex(c => c.includes('mobile') || c.includes('phone') || c.includes('parent'));
-  const snoIdx = norm.findIndex(c => c.includes('sno') || c.includes('sr') || c.includes('serial'));
 
-  if (nameIdx < 0) return res.status(400).json({ error: 'Missing "Name" column. Include a column with student names.' });
+  // Detect S.No column first so we can exclude it from other matches
+  const snoIdx = norm.findIndex(c => /^(sno|srno|sr|serial|slno|s)$/.test(c) || c.includes('serial'));
+
+  // Detect Name column (must contain 'name' but NOT be the sno column)
+  const nameIdx = norm.findIndex((c, i) => i !== snoIdx && (c.includes('name') || c === 'student'));
+
+  // Detect Batch/Class column (must not collide with name or sno)
+  const classIdx = norm.findIndex((c, i) => {
+    if (i === snoIdx || i === nameIdx) return false;
+    return /batch|class|section|grade|div/.test(c);
+  });
+
+  // Detect Mobile column (must not collide with other detected columns)
+  const mobileIdx = norm.findIndex((c, i) => {
+    if (i === snoIdx || i === nameIdx || i === classIdx) return false;
+    return /mobile|phone|parent|contact|whatsapp/.test(c);
+  });
+
+  if (nameIdx < 0) return res.status(400).json({ error: 'Missing "Name" column. Found columns: ' + cols.join(', ') + '. Include a column header with "Name" in it.' });
 
   for (const row of rows) {
     const name = String(row[cols[nameIdx]] || '').trim();
     const classSection = classIdx >= 0 ? String(row[cols[classIdx]] || '').trim().replace(/\s+/g, ' ') : '';
-    const parentMobile = mobileIdx >= 0 ? String(row[cols[mobileIdx]] || '').trim() : '';
+    let parentMobile = mobileIdx >= 0 ? String(row[cols[mobileIdx]] || '').trim() : '';
+    // Normalize mobile: remove non-digit chars except leading +
+    parentMobile = parentMobile.replace(/[^0-9+]/g, '');
+
     if (!name) { skipped++; continue; }
-    // Skip duplicates: same name + mobile combination already in DB or in this file
-    const combo = parentMobile ? `${name.toLowerCase()}::${parentMobile}` : '';
-    if (combo && usedCombos.has(combo)) { skipped++; continue; }
+
+    // --- Duplicate detection ---
+    // 1. If mobile is present: check name+mobile combo
+    if (parentMobile) {
+      const combo = `${name.toLowerCase()}::${parentMobile}`;
+      if (usedCombos.has(combo)) { duplicates++; continue; }
+    }
+    // 2. If class is present: check name+class combo
+    if (classSection) {
+      const nameClassKey = `${name.toLowerCase()}::${classSection}`;
+      if (usedNameClass.has(nameClassKey)) { duplicates++; continue; }
+    }
+    // 3. If neither mobile nor class: check by exact name match in this import batch
+    if (!parentMobile && !classSection) {
+      const plainKey = `${name.toLowerCase()}::__noclass__`;
+      if (usedNameClass.has(plainKey)) { duplicates++; continue; }
+    }
+
     let userId = '';
     for (let i = 0; i < 20; i++) {
       const candidate = generateUserId(name);
@@ -735,7 +775,10 @@ app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req
     }
     if (!userId) { errors.push(name); continue; }
     used.add(userId);
-    if (combo) usedCombos.add(combo);
+    if (parentMobile) usedCombos.add(`${name.toLowerCase()}::${parentMobile}`);
+    if (classSection) usedNameClass.add(`${name.toLowerCase()}::${classSection}`);
+    if (!parentMobile && !classSection) usedNameClass.add(`${name.toLowerCase()}::__noclass__`);
+
     try {
       await pool.query(
         `INSERT INTO users (id, name, user_id, class_section, parent_mobile) VALUES ($1,$2,$3,$4,$5)`,
@@ -743,11 +786,16 @@ app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req
       );
       inserted++;
     } catch (e) {
-      if (e.code === '23505') { skipped++; } else { errors.push(name); }
+      if (e.code === '23505') { duplicates++; } else { errors.push(name); }
     }
   }
 
-  res.json({ ok: true, inserted, skipped, errors: errors.slice(0, 20), batches: await pool.query('SELECT DISTINCT class_section FROM users WHERE class_section <> \'\' ORDER BY class_section').then(r => r.rows.map(x => x.class_section)) });
+  res.json({
+    ok: true, inserted, skipped, duplicates,
+    errors: errors.slice(0, 20),
+    detectedColumns: { name: cols[nameIdx] || null, batch: classIdx >= 0 ? cols[classIdx] : null, mobile: mobileIdx >= 0 ? cols[mobileIdx] : null, sno: snoIdx >= 0 ? cols[snoIdx] : null },
+    batches: await pool.query('SELECT DISTINCT class_section FROM users WHERE class_section <> \'\' ORDER BY class_section').then(r => r.rows.map(x => x.class_section))
+  });
 }));
 
 // Look up a student by user ID (used by quiz User-ID login)

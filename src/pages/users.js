@@ -222,10 +222,11 @@ function openImportModal(app) {
       const res = await importUsers(file);
       status.innerHTML = `
         <div class="info" style="margin-top:12px">
-          ${Icon('check-circle', 16)}<span><strong>${res.inserted}</strong> added · <strong>${res.skipped}</strong> skipped${res.errors?.length ? ` · ${res.errors.length} errors` : ''}.</span>
+          ${Icon('check-circle', 16)}<span><strong>${res.inserted}</strong> added · <strong>${res.duplicates || 0}</strong> duplicates skipped · <strong>${res.skipped}</strong> empty rows${res.errors?.length ? ` · ${res.errors.length} errors` : ''}.</span>
         </div>
-        ${res.batches?.length ? `<div class="sm muted" style="margin-top:8px">Batches now available: ${res.batches.map(b => escapeHtml(b)).join(', ')}</div>` : ''}`;
-      showToast(`${res.inserted} students imported`);
+        ${res.detectedColumns ? `<div class="sm muted" style="margin-top:8px">Detected columns — Name: <strong>${escapeHtml(res.detectedColumns.name || '—')}</strong>, Batch: <strong>${escapeHtml(res.detectedColumns.batch || '—')}</strong>, Mobile: <strong>${escapeHtml(res.detectedColumns.mobile || '—')}</strong></div>` : ''}
+        ${res.batches?.length ? `<div class="sm muted" style="margin-top:4px">Batches now available: ${res.batches.map(b => escapeHtml(b)).join(', ')}</div>` : ''}`;
+      showToast(`${res.inserted} students imported${res.duplicates ? `, ${res.duplicates} duplicates skipped` : ''}`);
       setTimeout(() => { modal.remove(); renderUsers(app); }, 1800);
     } catch (e) {
       status.innerHTML = `<div class="info" style="margin-top:12px; color:var(--red); border-color:var(--red-border); background:var(--red-soft)">${Icon('alert-circle', 16)}<span>${escapeHtml(e.message || 'Import failed')}</span></div>`;
