@@ -85,8 +85,8 @@ async function renderPage(app) {
           </button>
         </div>
       </div>
-      <div class="container">
-        <div class="tabs" style="margin-bottom:-1px" role="tablist">
+      <div class="container" style="padding-bottom:12px">
+        <div class="tabs" role="tablist">
           ${TABS.map(t => `
             <button class="tab-btn ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}" role="tab" aria-selected="${activeTab === t.id}">
               ${Icon(t.icon, 15)}<span>${t.label}</span>
@@ -182,16 +182,18 @@ function renderCustomField(f, cfi) {
           ${Field({ label: 'Label', control: Inp({ value: f.label, placeholder: 'e.g. Class / Grade', className: 'cf-label', attrs: `data-cfi="${cfi}"` }) })}
         </div>
         <div style="flex:1; min-width:130px">
-          ${Field({ label: 'Type', control: Sel({
-            options: [
-              { value: 'text', label: 'Short text' },
-              { value: 'dropdown', label: 'Dropdown select' },
-              { value: 'number', label: 'Number' }
-            ],
-            value: f.type,
-            className: 'cf-type',
-            attrs: `data-cfi="${cfi}"`
-          }) })}
+          ${Field({
+    label: 'Type', control: Sel({
+      options: [
+        { value: 'text', label: 'Short text' },
+        { value: 'dropdown', label: 'Dropdown select' },
+        { value: 'number', label: 'Number' }
+      ],
+      value: f.type,
+      className: 'cf-type',
+      attrs: `data-cfi="${cfi}"`
+    })
+  })}
         </div>
         <div style="flex:2; min-width:160px">
           ${Field({ label: 'Options', control: Inp({ value: f.options || '', placeholder: 'Class 6, Class 7', className: 'cf-options', attrs: `data-cfi="${cfi}" ${f.type !== 'dropdown' ? 'disabled' : ''}` }) })}
@@ -235,11 +237,11 @@ function renderQuestionsTab() {
         ${q ? renderQuestionEditor(q, activeQ) : `
           <div class="card">
             ${EmptyState({
-              icon: 'list-checks',
-              title: 'No questions yet',
-              desc: 'Add your first multiple-choice or true/false question to get started.',
-              action: `<button class="btn btn-primary" id="btn-add-q-empty">${Icon('plus', 15)}<span>Add a question</span></button>`
-            })}
+    icon: 'list-checks',
+    title: 'No questions yet',
+    desc: 'Add your first multiple-choice or true/false question to get started.',
+    action: `<button class="btn btn-primary" id="btn-add-q-empty">${Icon('plus', 15)}<span>Add a question</span></button>`
+  })}
           </div>
         `}
         ${total > 1 ? `
@@ -295,10 +297,10 @@ function renderQuestionEditor(q, i) {
       </div>
       <div class="panel">
         ${Field({
-          label: 'Question',
-          required: true,
-          control: Inp({ className: 'q-text', value: q.text, placeholder: 'Enter the question…', attrs: `data-qi="${i}" style="font-weight:600"` })
-        })}
+    label: 'Question',
+    required: true,
+    control: Inp({ className: 'q-text', value: q.text, placeholder: 'Enter the question…', attrs: `data-qi="${i}" style="font-weight:600"` })
+  })}
 
         ${q.type === 'mcq' ? `
           <div style="margin-bottom:16px">
@@ -380,11 +382,11 @@ function renderCertificateTab(certs) {
       <div class="q-editor-top"><div class="q-editor-title">Certificate</div></div>
       <div class="panel">
         ${Field({
-          label: 'Certificate template',
-          htmlFor: 'quiz-cert-template',
-          hint: certs.length === 0 ? 'No templates yet — create one and it will appear here.' : undefined,
-          control: Sel({ id: 'quiz-cert-template', options, value: currentQuiz.certificateTemplateId })
-        })}
+    label: 'Certificate template',
+    htmlFor: 'quiz-cert-template',
+    hint: certs.length === 0 ? 'No templates yet — create one and it will appear here.' : undefined,
+    control: Sel({ id: 'quiz-cert-template', options, value: currentQuiz.certificateTemplateId })
+  })}
         <div class="flex gap-sm">
           <a href="#/certificates/new" class="btn btn-secondary btn-sm">${Icon('upload', 14)}<span>Upload / manage templates</span></a>
         </div>

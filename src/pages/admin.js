@@ -141,11 +141,30 @@ export async function renderAdminPanel(app) {
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
-      <div class="container" style="padding-top:64px">
-        <div class="card" style="max-width:420px; margin:0 auto; padding:40px; text-align:center">
-          <div class="empty-icon" style="margin:0 auto 16px"><svg class="icon icon-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
-          <h3 style="font-size:16px; font-weight:700">Loading dashboard…</h3>
-          <p class="xs muted" style="margin-top:4px">Fetching quizzes, responses and templates</p>
+      <div class="container" style="padding-top:40px">
+        <div class="sk-block">
+          <div class="page-head" style="margin-bottom:24px">
+            <div>
+              <span class="sk" style="width:180px; height:13px; display:block"></span>
+              <span class="sk" style="width:260px; height:30px; margin-top:12px; display:block"></span>
+            </div>
+          </div>
+          <div class="stat-row" style="margin-bottom:28px">
+            ${[44, 56, 64, 90, 80].map(w => `
+              <div class="card" style="padding:18px; text-align:center">
+                <span class="sk sk-round" style="width:40px; height:40px; margin:0 auto 10px; display:block"></span>
+                <span class="sk" style="width:${w}px; height:13px; margin:0 auto"></span>
+                <span class="sk" style="width:70px; height:12px; margin:10px auto 0"></span>
+              </div>`).join('')}
+          </div>
+          <div class="table-wrap">
+            <div class="table-wrap-scroll">
+              <table class="table">
+                <thead><tr>${Array(6).fill('<th></th>').join('')}</tr></thead>
+                <tbody>${Array(7).fill(0).map(() => `<tr><td colspan="6"><span class="sk" style="width:100%"></span></td></tr>`).join('')}</tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>`;

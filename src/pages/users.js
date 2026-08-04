@@ -112,11 +112,11 @@ export async function renderUsers(app) {
         ` : `
           <div class="card">
             ${EmptyState({
-              icon: 'users',
-              title: 'No students yet',
-              desc: 'Import students in bulk from Excel, or add a single student manually to start building your master database.',
-              action: canImport ? `<button class="btn btn-primary" id="btn-import">${Icon('upload', 15)}<span>Import Excel</span></button>` : undefined
-            })}
+    icon: 'users',
+    title: 'No students yet',
+    desc: 'Import students in bulk from Excel, or add a single student manually to start building your master database.',
+    action: canImport ? `<button class="btn btn-primary" id="btn-import">${Icon('upload', 15)}<span>Import Excel</span></button>` : undefined
+  })}
           </div>
         `}
       </div>
@@ -133,7 +133,7 @@ export async function renderUsers(app) {
     app.querySelectorAll('.user-del').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (confirm(`Delete ${btn.dataset.name}? This cannot be undone.`)) {
-          await deleteUser(btn.dataset.id).catch(() => {});
+          await deleteUser(btn.dataset.id).catch(() => { });
           showToast('Student removed');
           renderUsers(app);
         }

@@ -414,7 +414,7 @@ function ensureArray(val) {
     try {
       const parsed = JSON.parse(val);
       if (Array.isArray(parsed)) return parsed;
-    } catch {}
+    } catch { }
   }
   return [];
 }
@@ -972,13 +972,14 @@ app.get('/api/reports/:quizId', asyncHandler(async (req, res) => {
     };
   }).sort((a, b) => (b.percent ?? -1) - (a.percent ?? -1));
 
+  const attemptedRows = studentRows.filter(r => r.attempted);
   res.json({
     quiz: { id: quiz.id, title: quiz.title || quizData.title || '', questionsCount: quizData.questions?.length || 0 },
-    totalStudents: users.length,
-    totalAttempted: subs.length,
-    notAttemptedCount: Math.max(0, users.length - subs.length),
-    overallAverage: subs.length ? Math.round(subs.reduce((s, x) => s + x.percent, 0) / subs.length) : 0,
-    passCount: subs.filter(s => s.passed).length,
+    totalStudents: studentRows.length,
+    totalAttempted: attemptedRows.length,
+    notAttemptedCount: studentRows.length - attemptedRows.length,
+    overallAverage: attemptedRows.length ? Math.round(attemptedRows.reduce((s, r) => s + (r.percent || 0), 0) / attemptedRows.length) : 0,
+    passCount: attemptedRows.filter(r => r.passed).length,
     batches: Object.values(batches),
     studentRows
   });
@@ -1116,11 +1117,11 @@ app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
         res.send(pdfBuffer);
 
         // Cleanup tmp files
-        try { fs.unlinkSync(tmpPptx); } catch {}
-        try { fs.unlinkSync(pdfPath); } catch {}
+        try { fs.unlinkSync(tmpPptx); } catch { }
+        try { fs.unlinkSync(pdfPath); } catch { }
         return;
       }
-    } catch {}
+    } catch { }
   }
 
   // Fallback: return modified PPTX if LibreOffice not installed
@@ -1129,7 +1130,7 @@ app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
   res.send(modifiedBuffer);
 
   // Cleanup tmp
-  try { fs.unlinkSync(tmpPptx); } catch {}
+  try { fs.unlinkSync(tmpPptx); } catch { }
 }));
 
 app.get('/api/tables', asyncHandler(async (req, res) => {

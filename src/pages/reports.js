@@ -88,10 +88,7 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
           <div class="eyebrow">${Icon('bar-chart', 14)}<span>Report</span></div>
           <h1 class="page-title" style="font-size:28px">${escapeHtml(quiz.title || 'Quiz report')}</h1>
         </div>
-        <div class="card" style="padding:40px; text-align:center">
-          <div class="empty-icon" style="margin:0 auto 16px"><svg class="icon icon-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></div>
-          <p class="muted sm">Generating report…</p>
-        </div>
+        ${reportSkeleton()}
       </div>
     </div>`;
   bindNavbar(app);
@@ -253,11 +250,11 @@ function renderStudentGroups(container, rows, batch, term) {
             </thead>
             <tbody>
               ${grouped[cls].map((s, i) => {
-                const status = s.attempted
-                  ? (s.passed ? Badge('Passed / Attempted', { tone: 'green', dot: true }) : Badge('Failed', { tone: 'red', dot: true }))
-                  : Badge('Not attempted', { tone: 'gray', dot: true });
-                const pctTone = s.percent == null ? 'gray' : s.percent >= 80 ? 'green' : s.percent >= 50 ? 'amber' : 'red';
-                return `
+    const status = s.attempted
+      ? (s.passed ? Badge('Passed / Attempted', { tone: 'green', dot: true }) : Badge('Failed', { tone: 'red', dot: true }))
+      : Badge('Not attempted', { tone: 'gray', dot: true });
+    const pctTone = s.percent == null ? 'gray' : s.percent >= 80 ? 'green' : s.percent >= 50 ? 'amber' : 'red';
+    return `
                   <tr>
                     <td class="mono muted">${i + 1}</td>
                     <td><span style="font-weight:600">${escapeHtml(s.name)}</span></td>
@@ -267,7 +264,7 @@ function renderStudentGroups(container, rows, batch, term) {
                     <td>${s.attempted ? Badge(`${s.percent}%`, { tone: pctTone }) : '—'}</td>
                     <td class="muted sm">${s.attempted ? formatTime(s.timeTaken) : '—'}</td>
                   </tr>`;
-              }).join('')}
+  }).join('')}
             </tbody>
           </table>
         </div>
@@ -343,4 +340,34 @@ function styleSheetRow(ws, r, { bold, fill, color }) {
       fill: fill ? { fgColor: { rgb: fill } } : undefined
     };
   }
+}
+
+// Skeleton shown while the report is being generated
+function reportSkeleton() {
+  const sk = (w) => `<span class="sk" style="${w ? `width:${w}` : ''}"></span>`;
+  const card = (w) => `
+    <div class="card" style="padding:18px; text-align:center">
+      <span class="sk sk-round" style="width:40px; height:40px; margin:0 auto 10px; display:block"></span>
+      <span class="sk" style="width:44px; height:13px; margin:0 auto"></span>
+      <span class="sk" style="width:${w || 64}px; height:12px; margin:10px auto 0"></span>
+    </div>`;
+  const table = (rows) => `
+    <div class="table-wrap" style="margin-bottom:28px">
+      <div class="table-wrap-scroll">
+        <table class="table">
+          <thead><tr>${Array(6).fill('<th></th>').join('')}</tr></thead>
+          <tbody>${Array(rows).fill(0).map(() => `
+            <tr><td colspan="6"><span class="sk" style="width:100%"></span></td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  return `
+    <div class="sk-block">
+      <div class="stat-row" style="margin-bottom:28px">${card() + card() + card() + card() + card()}</div>
+      <div class="section-head"><h2 class="section-title" style="font-size:20px">${sk('160px')}</h2></div>
+      ${table(5)}
+      <div class="section-head"><h2 class="section-title" style="font-size:20px">${sk('140px')}</h2></div>
+      ${table(6)}
+    </div>`;
 }
