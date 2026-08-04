@@ -1224,18 +1224,20 @@ input, textarea, select { font-family: inherit; }
    Chip toggles (batch picker + permission matrix)
    ============================================================ */
 .chip-toggle { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
-.chip-toggle .chip, .chip-toggle .perm-chip, .chip-toggle .batch-chip {
+.chip-toggle > .chip,
+.perm-chip, .batch-chip {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text-2); font-size: 13px; font-weight: 600;
   cursor: pointer; transition: all .15s var(--ease); line-height: 1;
 }
-.chip-toggle .chip:hover, .chip-toggle .perm-chip:hover, .chip-toggle .batch-chip:hover { border-color: var(--primary-border); color: var(--text); }
-.chip-toggle .chip .icon, .chip-toggle .perm-chip .icon, .chip-toggle .batch-chip .icon { width: 13px; height: 13px; }
-.chip-toggle .chip-on, .chip-toggle .perm-chip.on, .chip-toggle .batch-chip.on {
+.chip-toggle > .chip:hover, .perm-chip:hover, .batch-chip:hover { border-color: var(--primary-border); color: var(--text); }
+.chip-toggle > .chip .icon, .perm-chip .icon, .batch-chip .icon { width: 13px; height: 13px; }
+.chip-toggle > .chip-on, .perm-chip.on, .batch-chip.on {
   background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 2px 8px var(--primary-soft);
 }
-.chip-toggle .chip-off, .chip-toggle .perm-chip:not(.on), .chip-toggle .batch-chip:not(.on) { opacity: 0.85; }
+.perm-chip:not(.on), .batch-chip:not(.on) { opacity: 0.85; }
+.chip-toggle > .chip-on .icon, .perm-chip.on .icon, .batch-chip.on .icon { color: #fff; }
 
 /* ============================================================
    User-ID sign-in form (take quiz)

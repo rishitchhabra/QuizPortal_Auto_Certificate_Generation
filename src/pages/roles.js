@@ -1,7 +1,7 @@
 import { getStaff, addStaff, updateStaff, deleteStaff, getBatches } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar, showModal } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, showModal, renderAccessDenied } from '../utils.js';
 import { Icon, Badge, StatCard } from '../components.js';
-import { requireAdmin, hashPassword } from '../auth.js';
+import { requireAdmin, hashPassword, hasPermission } from '../auth.js';
 
 const MODULES = [
   {
@@ -72,6 +72,10 @@ MODULES.forEach(m => {
 
 export async function renderRoles(app) {
   if (!requireAdmin()) return;
+  if (!hasPermission('settings', 'manageStaff')) {
+    renderAccessDenied(app, 'Roles & Permissions', 'Your account does not have permission to manage staff accounts and roles.');
+    return;
+  }
 
   const [staff, batches] = await Promise.all([getStaff().catch(() => []), getBatches().catch(() => [])]);
 

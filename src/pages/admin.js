@@ -189,6 +189,21 @@ export async function renderAdminPanel(app) {
     } catch { subsByQuiz[q.id] = 0; }
   }));
 
+  // Permission-aware access for staff accounts
+  const can = {
+    viewQuizzes: hasPermission('quizzes', 'view'),
+    createQuiz: hasPermission('quizzes', 'create'),
+    editQuiz: hasPermission('quizzes', 'edit'),
+    deleteQuiz: hasPermission('quizzes', 'delete'),
+    publishQuiz: hasPermission('quizzes', 'publish'),
+    leaderboard: hasPermission('quizzes', 'leaderboard'),
+    viewUsers: hasPermission('users', 'view'),
+    manageStaff: hasPermission('settings', 'manageStaff') || hasPermission('settings', 'manageRoles'),
+    manageTemplates: hasPermission('settings', 'manageTemplates'),
+    system: hasPermission('settings', 'system'),
+    viewReports: hasPermission('reports', 'batchWise') || hasPermission('reports', 'quizWise')
+  };
+
   app.innerHTML = `
     ${renderNavbar()}
     <div class="page fade-in">
@@ -203,7 +218,7 @@ export async function renderAdminPanel(app) {
           </div>
           <div class="page-head-actions">
             <button class="btn btn-ghost btn-sm" id="btn-logout">${Icon('log-out', 14)}<span>Logout</span></button>
-            <a href="#/create" class="btn btn-primary">${Icon('plus', 15)}<span>New Quiz</span></a>
+            ${can.createQuiz ? `<a href="#/create" class="btn btn-primary">${Icon('plus', 15)}<span>New Quiz</span></a>` : ''}
           </div>
         </div>
 
@@ -217,6 +232,7 @@ export async function renderAdminPanel(app) {
         </div>
 
         <!-- Quizzes -->
+        ${can.viewQuizzes ? `
         <div class="section-head">
           <div>
             <h2 class="section-title">Quizzes</h2>
@@ -251,7 +267,7 @@ export async function renderAdminPanel(app) {
                 </tr>
               </thead>
               <tbody>
-                ${quizzes.map(q => renderQuizRow(q, subsByQuiz[q.id] || 0)).join('')}
+                ${quizzes.map(q => renderQuizRow(q, subsByQuiz[q.id] || 0, can)).join('')}
               </tbody>
             </table>
           </div>
@@ -261,12 +277,14 @@ export async function renderAdminPanel(app) {
               icon: 'list-checks',
               title: 'No quizzes yet',
               desc: 'Create your first quiz to start collecting responses and issuing certificates.',
-              action: `<a href="#/create" class="btn btn-primary">${Icon('plus', 15)}<span>Create First Quiz</span></a>`
+              action: can.createQuiz ? `<a href="#/create" class="btn btn-primary">${Icon('plus', 15)}<span>Create First Quiz</span></a>` : undefined
             })}
           </div>
         `}
+        ` : ''}
 
         <!-- Management -->
+        ${(can.viewUsers || can.manageStaff || can.viewReports) ? `
         <div class="section-head">
           <div>
             <h2 class="section-title">Management</h2>
@@ -275,6 +293,7 @@ export async function renderAdminPanel(app) {
         </div>
 
         <div class="grid grid-3" style="margin-bottom:8px">
+          ${can.viewUsers ? `
           <a href="#/users" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
               <span class="stat-icon stat-blue" style="width:40px; height:40px">${Icon('users', 17)}</span>
@@ -283,7 +302,8 @@ export async function renderAdminPanel(app) {
             <h3 style="font-weight:700; font-size:15px">Students Master</h3>
             <p class="muted sm" style="margin-top:4px">Upload the student roll via Excel, assign auto User-IDs, and manage Class-Section batches.</p>
           </a>
-
+          ` : ''}
+          ${can.manageStaff ? `
           <a href="#/roles" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
               <span class="stat-icon stat-violet" style="width:40px; height:40px">${Icon('shield', 17)}</span>
@@ -292,7 +312,9 @@ export async function renderAdminPanel(app) {
             <h3 style="font-weight:700; font-size:15px">Roles &amp; Permissions</h3>
             <p class="muted sm" style="margin-top:4px">Create teacher accounts and grant module-wise permissions plus their assigned batches.</p>
           </a>
+          ` : ''}
 
+          ${can.viewReports ? `
           <a href="#/reports" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
               <span class="stat-icon stat-green" style="width:40px; height:40px">${Icon('bar-chart', 17)}</span>
@@ -301,9 +323,12 @@ export async function renderAdminPanel(app) {
             <h3 style="font-weight:700; font-size:15px">Reports</h3>
             <p class="muted sm" style="margin-top:4px">Batch-wise and quiz-wise performance with not-attempted tracking and CSV export.</p>
           </a>
+          ` : ''}
         </div>
+        ` : ''}
 
         <!-- Certificate templates -->
+        ${can.manageTemplates ? `
         <div class="section-head">
           <div>
             <h2 class="section-title">Certificate templates</h2>
@@ -328,8 +353,10 @@ export async function renderAdminPanel(app) {
             })}
           </div>
         `}
+        ` : ''}
 
         <!-- System settings -->
+        ${can.system ? `
         <div class="section-head">
           <div>
             <h2 class="section-title">System &amp; security</h2>
@@ -371,6 +398,7 @@ export async function renderAdminPanel(app) {
             </div>
           </div>
         </div>
+        ` : ''}
 
       </div>
     </div>`;
@@ -528,7 +556,7 @@ export async function renderAdminPanel(app) {
   bindDropdowns(app);
 }
 
-function renderQuizRow(quiz, subsCount) {
+function renderQuizRow(quiz, subsCount, can = {}) {
   const isLive = quiz.isPublished;
   const qCount = quiz.questions?.length || 0;
   const deadlineTxt = formatDeadline(quiz.deadline);
@@ -540,10 +568,10 @@ function renderQuizRow(quiz, subsCount) {
   const subj = subjectFor(title);
   const items = [
     { id: 'copy', label: 'Copy link', icon: 'link' },
-    { id: 'responses', label: 'Responses', icon: 'users' },
-    { id: 'dup', label: 'Duplicate', icon: 'copy' },
-    { id: 'toggle', label: isLive ? 'Move to draft' : 'Make live', icon: isLive ? 'archive' : 'play' },
-    { id: 'del', label: 'Delete', icon: 'trash', tone: 'danger' }
+    ...(can.leaderboard ? [{ id: 'responses', label: 'Responses', icon: 'users' }] : []),
+    ...(can.editQuiz || can.createQuiz ? [{ id: 'dup', label: 'Duplicate', icon: 'copy' }] : []),
+    ...(can.publishQuiz ? [{ id: 'toggle', label: isLive ? 'Move to draft' : 'Make live', icon: isLive ? 'archive' : 'play' }] : []),
+    ...(can.deleteQuiz ? [{ id: 'del', label: 'Delete', icon: 'trash', tone: 'danger' }] : [])
   ];
   return `
     <tr data-id="${quiz.id}" data-status="${isLive ? 'live' : 'draft'}" data-title="${escapeHtml(title).toLowerCase()}">
@@ -559,18 +587,18 @@ function renderQuizRow(quiz, subsCount) {
       </td>
       <td><span class="mono">${qCount}</span></td>
       <td>
-        <a href="#/responses/${quiz.id}" class="meta-item" style="text-decoration:none">${Icon('users', 14)}<span>${subsCount || 0}</span></a>
+        ${can.leaderboard ? `<a href="#/responses/${quiz.id}" class="meta-item" style="text-decoration:none">${Icon('users', 14)}<span>${subsCount || 0}</span></a>` : `<span class="mono muted">${subsCount || 0}</span>`}
       </td>
       <td class="muted sm">${deadlineTxt}</td>
       <td class="muted sm">${createdTxt}</td>
       <td>
         <div class="flex" style="gap:8px; justify-content:flex-end">
-          <a href="#/edit/${quiz.id}" class="btn btn-secondary btn-sm">${Icon('edit', 14)}<span>Edit</span></a>
-          ${Dropdown({
+          ${can.editQuiz ? `<a href="#/edit/${quiz.id}" class="btn btn-secondary btn-sm">${Icon('edit', 14)}<span>Edit</span></a>` : ''}
+          ${items.length ? Dropdown({
             id: `dd-${quiz.id}`,
             trigger: Icon('more-horizontal', 16),
             items
-          })}
+          }) : ''}
         </div>
         <button class="toggle-live" data-id="${quiz.id}" style="display:none" aria-hidden="true" tabindex="-1"></button>
         <button class="dup-quiz" data-id="${quiz.id}" style="display:none" aria-hidden="true" tabindex="-1"></button>

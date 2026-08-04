@@ -1,6 +1,7 @@
 import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
 import { Icon, Badge, Field, Inp, Txta, Sel, Toggle, EmptyState } from '../components.js';
+import { requireAdmin, hasPermission } from '../auth.js';
+import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar, renderAccessDenied } from '../utils.js';
 
 let currentQuiz = null;
 let activeTab = 'index';       // index | questions | evaluation | certificate | publishing
@@ -18,11 +19,20 @@ const TABS = [
 function quizTitle() { return (currentQuiz?.title || '').trim() || 'Untitled quiz'; }
 
 export async function renderQuizBuilder(app, params) {
+  if (!requireAdmin()) return;
   const quizId = params[0];
   if (quizId) {
+    if (!hasPermission('quizzes', 'edit') && !hasPermission('quizzes', 'view')) {
+      renderAccessDenied(app, 'Edit Quiz', 'Your account does not have permission to edit quizzes.');
+      return;
+    }
     currentQuiz = await getQuiz(quizId);
     if (!currentQuiz) { window.location.hash = '#/admin'; return; }
   } else {
+    if (!hasPermission('quizzes', 'create')) {
+      renderAccessDenied(app, 'New Quiz', 'Your account does not have permission to create quizzes.');
+      return;
+    }
     currentQuiz = {
       id: generateId(),
       title: '',

@@ -1,10 +1,14 @@
 import { getQuiz, getSubmissions } from '../store.js';
-import { renderNavbar, formatTime, escapeHtml, bindNavbar, copyTextToClipboard, showToast } from '../utils.js';
-import { requireAdmin } from '../auth.js';
+import { renderNavbar, formatTime, escapeHtml, bindNavbar, copyTextToClipboard, showToast, renderAccessDenied } from '../utils.js';
+import { requireAdmin, hasPermission } from '../auth.js';
 import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
 
 export async function renderResponses(app, params) {
   if (!requireAdmin()) return;
+  if (!hasPermission('quizzes', 'leaderboard')) {
+    renderAccessDenied(app, 'Responses', 'Your account does not have permission to view quiz responses.');
+    return;
+  }
 
   const quizId = params[0];
   const quiz = await getQuiz(quizId);

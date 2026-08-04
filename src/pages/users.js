@@ -1,5 +1,5 @@
 import { getUsers, addUser, deleteUser, getBatches, importUsers } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, renderAccessDenied } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
 
@@ -7,14 +7,20 @@ let filter = { classSection: '', search: '' };
 
 export async function renderUsers(app) {
   if (!requireAdmin()) return;
+  if (!hasPermission('users', 'view')) {
+    renderAccessDenied(app, 'Students Master', 'Your account does not have permission to view the students database.');
+    return;
+  }
 
   const batches = await getBatches().catch(() => []);
   const users = await getUsers(filter).catch(() => []);
 
-  const distinctClasses = Array.from(new Set(users.map(u => u.classSection).filter(Boolean)));
+  const distinctClasses = Array.from(new Set(users.map(u => u.classSection || '')));
+  const groupKeys = distinctClasses.sort((a, b) => (a === '' ? 1 : 0) - (b === '' ? 1 : 0));
   const grouped = {};
-  distinctClasses.forEach(c => { grouped[c] = []; });
-  users.forEach(u => { if (u.classSection) (grouped[u.classSection] = grouped[u.classSection] || []).push(u); });
+  groupKeys.forEach(c => { grouped[c] = []; });
+  users.forEach(u => { (grouped[u.classSection || ''] = grouped[u.classSection || ''] || []).push(u); });
+  const batchCount = distinctClasses.filter(Boolean).length;
 
   const canAdd = hasPermission('users', 'add');
   const canDel = hasPermission('users', 'delete');
@@ -29,7 +35,7 @@ export async function renderUsers(app) {
           <div>
             <div class="eyebrow">${Icon('users', 14)}<span>Student Master</span></div>
             <h1 class="page-title" style="font-size:32px">Students &amp; Batches</h1>
-            <p class="page-sub" style="margin-top:6px; font-size:15px">${users.length} students · ${batches.length} batches (Class-Section)</p>
+            <p class="page-sub" style="margin-top:6px; font-size:15px">${users.length} students · ${batchCount} batches (Class-Section)</p>
           </div>
           <div class="page-head-actions">
             <a href="#/admin" class="btn btn-ghost btn-sm">${Icon('arrow-left', 14)}<span>Back</span></a>
@@ -40,7 +46,7 @@ export async function renderUsers(app) {
 
         <div class="stat-row" style="margin-bottom:24px">
           ${StatCard({ icon: 'users', label: 'Total students', value: users.length, tone: 'blue' })}
-          ${StatCard({ icon: 'layers', label: 'Batches', value: distinctClasses.length, tone: 'violet' })}
+          ${StatCard({ icon: 'layers', label: 'Batches', value: batchCount, tone: 'violet' })}
           ${StatCard({ icon: 'check-circle', label: 'With IDs', value: users.filter(u => u.userId).length, tone: 'green' })}
           ${StatCard({ icon: 'phone', label: 'Phones collected', value: users.filter(u => u.parentMobile).length, tone: 'amber' })}
         </div>
@@ -57,12 +63,12 @@ export async function renderUsers(app) {
         </div>
 
         ${users.length > 0 ? `
-          ${distinctClasses.map(cls => `
+          ${groupKeys.map(cls => `
             <div style="margin-bottom:28px">
               <div class="section-head" style="margin:0 0 14px">
                 <div>
                   <h2 class="section-title" style="font-size:20px">${escapeHtml(cls || 'Unassigned')}</h2>
-                  <p class="section-sub">${grouped[cls].length} students · auto User-ID: name + 3-digit suffix</p>
+                  <p class="section-sub">${grouped[cls].length} students${cls ? ' · auto User-ID: name + 3-digit suffix' : ' · no Class-Section set — add one by editing the student'}</p>
                 </div>
               </div>
               <div class="table-wrap">

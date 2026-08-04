@@ -542,14 +542,17 @@ app.get('/api/quizzes/:id', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/quizzes', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'quizzes', 'create');
   res.json(await upsertQuiz(req.body || {}));
 }));
 
 app.put('/api/quizzes/:id', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'quizzes', 'edit');
   res.json(await upsertQuiz({ ...(req.body || {}), id: req.params.id }));
 }));
 
 app.delete('/api/quizzes/:id', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'quizzes', 'delete');
   await pool.query('DELETE FROM quizzes WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -621,6 +624,11 @@ app.post('/api/users', asyncHandler(async (req, res) => {
   const body = req.body || {};
   const name = (body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'name required' });
+  const parentMobile = (body.parentMobile || '').trim();
+  if (parentMobile) {
+    const dup = await pool.query('SELECT 1 FROM users WHERE LOWER(name) = LOWER($1) AND parent_mobile = $2', [name, parentMobile]);
+    if (dup.rows.length) return res.status(409).json({ error: 'A student with this name and mobile number already exists' });
+  }
   let userId = (body.userId || '').trim();
   if (!userId) {
     // auto-generate, ensure uniqueness
@@ -673,13 +681,18 @@ app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req
 
   let inserted = 0, skipped = 0, errors = [];
   const used = new Set();
-  const existing = await pool.query('SELECT user_id FROM users');
-  existing.rows.forEach(r => used.add(r.user_id));
+  const usedCombos = new Set();
+  const existing = await pool.query('SELECT user_id, name, parent_mobile FROM users');
+  existing.rows.forEach(r => {
+    used.add(r.user_id);
+    const mob = (r.parent_mobile || '').trim();
+    if (mob) usedCombos.add(`${String(r.name).toLowerCase()}::${mob}`);
+  });
 
   const cols = Object.keys(rows[0]);
   const norm = cols.map(c => c.toLowerCase().replace(/[\s_\-().]/g, ''));
   const nameIdx = norm.findIndex(c => c.includes('name'));
-  const classIdx = norm.findIndex(c => c.includes('class') || c.includes('section'));
+  const classIdx = norm.findIndex(c => c.includes('class') || c.includes('section') || c.includes('grade') || c.includes('batch'));
   const mobileIdx = norm.findIndex(c => c.includes('mobile') || c.includes('phone') || c.includes('parent'));
   const snoIdx = norm.findIndex(c => c.includes('sno') || c.includes('sr') || c.includes('serial'));
 
@@ -690,6 +703,9 @@ app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req
     const classSection = classIdx >= 0 ? String(row[cols[classIdx]] || '').trim().replace(/\s+/g, ' ') : '';
     const parentMobile = mobileIdx >= 0 ? String(row[cols[mobileIdx]] || '').trim() : '';
     if (!name) { skipped++; continue; }
+    // Skip duplicates: same name + mobile combination already in DB or in this file
+    const combo = parentMobile ? `${name.toLowerCase()}::${parentMobile}` : '';
+    if (combo && usedCombos.has(combo)) { skipped++; continue; }
     let userId = '';
     for (let i = 0; i < 20; i++) {
       const candidate = generateUserId(name);
@@ -697,6 +713,7 @@ app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req
     }
     if (!userId) { errors.push(name); continue; }
     used.add(userId);
+    if (combo) usedCombos.add(combo);
     try {
       await pool.query(
         `INSERT INTO users (id, name, user_id, class_section, parent_mobile) VALUES ($1,$2,$3,$4,$5)`,

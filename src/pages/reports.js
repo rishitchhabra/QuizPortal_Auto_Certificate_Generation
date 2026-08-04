@@ -1,12 +1,24 @@
 import { getAllQuizzes, getQuizReport } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar, formatTime, copyTextToClipboard } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, formatTime, copyTextToClipboard, renderAccessDenied } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState } from '../components.js';
-import { requireAdmin, hasPermission } from '../auth.js';
+import { requireAdmin, hasPermission, currentUser } from '../auth.js';
 
 export async function renderReports(app, params) {
   if (!requireAdmin()) return;
+  if (!hasPermission('reports', 'batchWise') && !hasPermission('reports', 'quizWise')) {
+    renderAccessDenied(app, 'Reports', 'Your account does not have permission to view reports.');
+    return;
+  }
 
-  const quizzes = await getAllQuizzes().catch(() => []);
+  let quizzes = await getAllQuizzes().catch(() => []);
+  const session = currentUser();
+  const assigned = (session?.staff?.assignedBatches || []);
+  if (session?.type === 'staff' && assigned.length) {
+    quizzes = quizzes.filter(q => {
+      const qb = Array.isArray(q.allowedBatches) ? q.allowedBatches : [];
+      return qb.some(b => assigned.includes(b));
+    });
+  }
   const quizId = params[0];
   const selectedQuiz = quizId ? quizzes.find(q => q.id === quizId) : null;
 

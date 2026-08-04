@@ -59,6 +59,28 @@ export function bindNavbar(app) {
   });
 }
 
+export function renderAccessDenied(app, title, reason) {
+  app.innerHTML = `
+    <div class="container">
+      ${renderNavbar()}
+      <div class="card" style="max-width:520px; margin:48px auto; text-align:center; padding:40px 28px">
+        <div class="stat-icon stat-red" style="width:52px; height:52px; margin:0 auto 16px">${lockIcon()}</div>
+        <h2 style="font-size:18px; font-weight:700; margin-bottom:6px">${escapeHtml(title)}</h2>
+        <p class="muted sm" style="margin-bottom:20px">${escapeHtml(reason)}</p>
+        <a href="#/admin" class="btn btn-secondary btn-sm">${backIcon()}<span>Back to Dashboard</span></a>
+      </div>
+    </div>`;
+  bindNavbar(app);
+}
+
+function lockIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+}
+
+function backIcon() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>`;
+}
+
 export function showModal(title, content, onConfirm, opts = {}) {
   const confirmText = opts.confirmText || 'Confirm';
   const cancelText = opts.cancelText || 'Cancel';
