@@ -2290,12 +2290,12 @@ select {
 .signin-promo {
   margin-top: 28px;
   border-radius: var(--r-xl);
-  background: var(--grad-brand);
+  background: var(--grad-green);
   color: #fff;
   padding: 10px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 16px 36px rgba(91, 95, 239, 0.28);
+  box-shadow: 0 16px 36px rgba(34, 197, 94, 0.28);
 }
 
 .signin-promo-bubbles {
