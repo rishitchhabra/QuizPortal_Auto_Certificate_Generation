@@ -9,9 +9,12 @@ import multer from 'multer';
 import PizZip from 'pizzip';
 import * as XLSX from 'xlsx';
 import Docxtemplater from 'docxtemplater';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+
+const execP = promisify(exec);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,9 +50,46 @@ const pptxUpload = multer({
   }
 });
 
-const pool = new Pool({ connectionString: DATABASE_URL, ssl: DB_SSL });
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: DB_SSL,
+  max: parseInt(process.env.PG_POOL_MAX || '20', 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
+pool.on('error', (err) => {
+  console.error('Unexpected PostgreSQL pool error:', err.message);
+});
 
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+
+// Bounded concurrency for LibreOffice certificate rendering. launching many soffice
+// processes at once (e.g. hundreds of students passing simultaneously) would starve the
+// server of CPU/RAM, so conversions run through a FIFO queue with a small concurrency cap.
+const SOFFICE_CONCURRENCY = parseInt(process.env.SOFFICE_CONCURRENCY || '2', 10) || 2;
+let sofficeRunning = 0;
+const sofficeWaiters = [];
+
+async function withSofficeLock() {
+  while (sofficeRunning >= SOFFICE_CONCURRENCY) {
+    await new Promise((resolve) => sofficeWaiters.push(resolve));
+  }
+  sofficeRunning++;
+  return () => {
+    sofficeRunning--;
+    const next = sofficeWaiters.shift();
+    if (next) next();
+  };
+}
+
+async function sofficeConvert(cmd, args) {
+  const release = await withSofficeLock();
+  try {
+    await execP(`"${cmd}" --headless ${args}`, { timeout: 60000, maxBuffer: 64 * 1024 * 1024 });
+  } finally {
+    release();
+  }
+}
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -270,6 +310,29 @@ async function upsertQuiz(quiz) {
 
 async function insertSubmission(submission) {
   const payload = { ...submission, id: submission.id || generateId() };
+
+  // Best-effort guard against rapid duplicate submissions (double-click, double-tab,
+  // or a retry race) that would otherwise inflate reports. Each student is expected to
+  // attempt a quiz once; the race window is short and placement is BEFORE the insert,
+  // so 200-400 concurrent requests from distinct students are unaffected.
+  const participant = payload.participant || {};
+  const dupEmail = participant.email || null;
+  const dupUserId = participant.userId || null;
+  if (dupEmail || dupUserId) {
+    const dup = await pool.query(
+      `SELECT 1 FROM submissions
+       WHERE quiz_id = $1
+         AND submitted_at > now() - interval '30 seconds'
+         AND (
+           ($2::text IS NOT NULL AND participant->>'email' = $2)
+           OR ($3::text IS NOT NULL AND LOWER(participant->>'userId') = LOWER($3))
+         )
+       LIMIT 1`,
+      [payload.quizId, dupEmail, dupUserId]
+    );
+    if (dup.rows.length > 0) return payload; // duplicate in-flight; treat as idempotent OK
+  }
+
   await pool.query(
     `INSERT INTO submissions
       (id, quiz_id, participant, answers, score, total_points, percent, passed, time_taken, question_results, submitted_at)
@@ -1095,26 +1158,48 @@ app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
   const tmpPptx = path.join(TMP_DIR, `cert_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pptx`);
   fs.writeFileSync(tmpPptx, modifiedBuffer);
 
-  // Try LibreOffice / soffice conversion to PDF across Linux / macOS
+  const cleanName = (data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '');
+
+  // Try LibreOffice / soffice conversion to PDF across Linux / macOS.
+  // Uses async exec (never blocks the event loop) gated behind a bounded queue so
+  // hundreds of simultaneous conversions don't starve the server.
   const cmds = [
     'libreoffice',
     'soffice',
     '/Applications/LibreOffice.app/Contents/MacOS/soffice'
   ];
 
+  // Render the first slide to a PNG (base64) so the on-screen preview works on ALL
+  // devices without relying on client-side PDF.js, which fails silently on some phones.
+  const renderPreviewPng = async (cmd, outDir) => {
+    try {
+      fs.mkdirSync(outDir, { recursive: true });
+      await sofficeConvert(cmd, `--convert-to png --outdir "${outDir}" "${tmpPptx}"`);
+      const files = fs.readdirSync(outDir).filter((f) => /\.png$/i.test(f));
+      if (files.length) {
+        files.sort((a, b) => {
+          const na = parseInt((a.match(/-(\d+)\.png$/i) || [])[1] || '0', 10);
+          const nb = parseInt((b.match(/-(\d+)\.png$/i) || [])[1] || '0', 10);
+          return na - nb;
+        });
+        return fs.readFileSync(path.join(outDir, files[0])).toString('base64');
+      }
+    } catch { }
+    return null;
+  };
+
   for (const cmd of cmds) {
     try {
-      execSync(`"${cmd}" --headless --convert-to pdf --outdir "${TMP_DIR}" "${tmpPptx}"`, {
-        timeout: 30000,
-        stdio: 'pipe'
-      });
+      await sofficeConvert(cmd, `--convert-to pdf --outdir "${TMP_DIR}" "${tmpPptx}"`);
       const pdfPath = tmpPptx.replace('.pptx', '.pdf');
 
       if (fs.existsSync(pdfPath)) {
         const pdfBuffer = fs.readFileSync(pdfPath);
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="Certificate_${(data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '')}.pdf"`);
-        res.send(pdfBuffer);
+        const pngDir = path.join(TMP_DIR, `certpng_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+        const preview = await renderPreviewPng(cmd, pngDir);
+        try { fs.rmSync(pngDir, { recursive: true, force: true }); } catch { }
+
+        res.json({ ok: true, ext: 'pdf', filename: `Certificate_${cleanName}.pdf`, pdf: pdfBuffer.toString('base64'), preview });
 
         // Cleanup tmp files
         try { fs.unlinkSync(tmpPptx); } catch { }
@@ -1125,9 +1210,13 @@ app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
   }
 
   // Fallback: return modified PPTX if LibreOffice not installed
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
-  res.setHeader('Content-Disposition', `attachment; filename="Certificate_${(data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '')}.pptx"`);
-  res.send(modifiedBuffer);
+  res.json({
+    ok: true,
+    ext: 'pptx',
+    filename: `Certificate_${cleanName}.pptx`,
+    pptx: modifiedBuffer.toString('base64'),
+    preview: null
+  });
 
   // Cleanup tmp
   try { fs.unlinkSync(tmpPptx); } catch { }

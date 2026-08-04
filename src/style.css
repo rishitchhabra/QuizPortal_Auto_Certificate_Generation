@@ -4156,6 +4156,14 @@ tr:focus-visible {
 @keyframes sk-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .sk-block table th, .sk-block table td { border-bottom-color: transparent; }
 
+/* Result-page skeleton card used while results + certificate are loading */
+.result-skel-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 24px;
+}
+
 /* ============================================================
    Hint text (used by batch pickers, quiz audience, etc.)
    ============================================================ */

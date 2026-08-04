@@ -597,16 +597,45 @@ async function submitQuiz(force = false) {
 function renderResults(submission) {
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   const app = document.getElementById('app');
+
+  // Show a skeleton while the results + certificate are being prepared, and only
+  // swap in the real page once everything (including the certificate) is ready.
+  app.innerHTML = `${renderNavbar()}\n${resultSkeleton()}`;
+
   (async () => {
-    const certTemplate = quiz.certificateTemplateId ? await getCertTemplate(quiz.certificateTemplateId) : null;
-    const showCert = submission.passed && certTemplate;
-    const isPptx = certTemplate?.type === 'pptx';
-    const showSummary = quiz.showSummary !== false;
-    const showAnswers = quiz.showCorrectAnswers !== false;
     const pct = submission.percent || 0;
     const R = 60;
     const CIRC = 2 * Math.PI * R;
     const offset = CIRC * (1 - pct / 100);
+
+    let certTemplate = null;
+    try {
+      certTemplate = quiz.certificateTemplateId ? await getCertTemplate(quiz.certificateTemplateId) : null;
+    } catch { }
+
+    const showCert = submission.passed && certTemplate;
+    const isPptx = certTemplate?.type === 'pptx';
+    const showSummary = quiz.showSummary !== false;
+    const showAnswers = quiz.showCorrectAnswers !== false;
+
+    let certBlock = '';
+    let pptxNeedPdfJs = false;
+    if (showCert) {
+      if (isPptx) {
+        try {
+          const built = await buildPptxCert(submission, certTemplate);
+          pptxNeedPdfJs = !!built.needPdfJs;
+          certBlock = pptxCertPanelHtml(built, certTemplate);
+        } catch (err) {
+          console.error('Certificate build error:', err);
+          certBlock = pptxCertPanelHtml({ ext: 'pdf', error: true }, certTemplate);
+        }
+      } else {
+        certBlock = designerCertPanelHtml(submission, certTemplate);
+      }
+    } else if (submission.passed) {
+      certBlock = `<div class="info" style="margin-bottom:20px">${Icon('info', 16)}<span>You passed, but no certificate template is attached to this quiz.</span></div>`;
+    }
 
     app.innerHTML = `
       ${renderNavbar()}
@@ -665,35 +694,7 @@ function renderResults(submission) {
             </div>
           `}
 
-          ${showCert ? (isPptx ? `
-            <div class="card cert-panel">
-              <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:4px">${Icon('award', 20, '')}</div>
-              <h3 style="font-size:20px; font-weight:800">Your official certificate</h3>
-              <p class="muted sm" style="margin-top:4px">Generated from template: ${escapeHtml(certTemplate.name || 'Certificate')}</p>
-              <div id="pptx-cert-preview-container" style="margin-top:8px; min-height:180px; display:flex; align-items:center; justify-content:center; background:var(--surface-subtle); border:1px solid var(--border); border-radius:var(--r-lg); padding:16px">
-                <div class="sm text-3 flex items-center gap-sm">${Icon('loader', 16)}<span>Rendering your personalized certificate…</span></div>
-              </div>
-              <div class="cert-toolbar">
-                <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate (PDF)</span></button>
-              </div>
-            </div>
-          ` : `
-            <div class="card cert-panel">
-              <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:4px">${Icon('award', 20, '')}</div>
-              <h3 style="font-size:20px; font-weight:800">Your official certificate</h3>
-              <p class="muted sm" style="margin-top:4px">Personalized with your name and score.</p>
-              <div id="cert-render-wrapper" style="margin-top:20px; overflow-x:auto">
-                <div id="cert-render" style="display:inline-block; position:relative"></div>
-              </div>
-              <div class="cert-toolbar">
-                <button class="btn btn-primary" id="btn-download-cert">${Icon('download', 15)}<span>Download PDF Certificate</span></button>
-              </div>
-            </div>
-          `) : submission.passed ? `
-            <div class="info" style="margin-bottom:20px">
-              ${Icon('info', 16)}<span>You passed, but no certificate template is attached to this quiz.</span>
-            </div>
-          ` : ''}
+          ${certBlock}
 
           ${(showAnswers && submission.questionResults) ? `
             <div class="card card-pad" style="margin-bottom:20px">
@@ -717,13 +718,11 @@ function renderResults(submission) {
       burstConfetti({ count: submission.percent >= 90 ? 110 : 70 });
     }
 
-    if (showCert && certTemplate) {
-      if (isPptx) {
-        loadAndShowPptxCertPreview(certTemplate, submission);
-      } else {
-        renderCertificate(certTemplate, submission);
-        app.querySelector('#btn-download-cert')?.addEventListener('click', () => downloadCertPDF());
-      }
+    if (showCert && isPptx) {
+      app.querySelector('#btn-download-pptx-cert')?.addEventListener('click', () => downloadCachedCert());
+      if (pptxNeedPdfJs) renderPdfCertPreview();
+    } else if (showCert && !isPptx) {
+      app.querySelector('#btn-download-cert')?.addEventListener('click', () => downloadCertPDF());
     }
   })();
 }
@@ -765,18 +764,10 @@ function bindReviewAccordions(app) {
 }
 
 /* ============================ CERTIFICATE RENDERING ============================ */
-function renderCertificate(template, submission) {
-  const el = document.getElementById('cert-render');
-  if (!el) return;
-
-  el.style.cssText = `width:900px;height:636px;position:relative;background:${template.backgroundColor || '#ffffff'};border:${template.borderWidth || 0}px ${template.borderStyle || 'solid'} ${template.borderColor || '#c8a96e'};font-family:'Playfair Display',serif;overflow:hidden;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.18);`;
-  el.innerHTML = '';
-
+function buildCertificateInner(template, submission) {
+  let inner = '';
   if (template.backgroundImage) {
-    const bgImg = document.createElement('img');
-    bgImg.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
-    bgImg.src = template.backgroundImage;
-    el.appendChild(bgImg);
+    inner += `<img src="${escapeHtml(template.backgroundImage)}" style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;pointer-events:none">`;
   }
 
   const pName = submission.participant?.name || participant.name || 'Participant';
@@ -806,16 +797,60 @@ function renderCertificate(template, submission) {
     ];
   }
 
-  const elementsHtml = elements.map(e => {
+  return inner + elements.map(e => {
     if (e.type === 'image') {
-      return `<img src="${e.src}" style="position:absolute;left:${e.x}px;top:${e.y}px;width:${e.width || 100}px;height:${e.height || 100}px;object-fit:contain">`;
+      return `<img src="${escapeHtml(e.src)}" style="position:absolute;left:${e.x}px;top:${e.y}px;width:${e.width || 100}px;height:${e.height || 100}px;object-fit:contain">`;
     }
     let c = e.content || '';
     for (const [k, v] of Object.entries(placeholders)) c = c.replaceAll(k, v);
     return `<div style="position:absolute;left:${e.x}px;top:${e.y}px;font-size:${e.fontSize || 16}px;color:${e.color || '#333'};font-family:${e.fontFamily || "'Playfair Display',serif"};font-weight:${e.fontWeight || 'normal'};font-style:${e.fontStyle || 'normal'};text-align:${e.textAlign || 'center'};${e.width ? `width:${e.width}px;` : ''}white-space:pre-wrap;line-height:1.4">${escapeHtml(c)}</div>`;
   }).join('');
+}
 
-  el.insertAdjacentHTML('beforeend', elementsHtml);
+function designerCertPanelHtml(submission, template) {
+  const style = `width:900px;height:636px;position:relative;background:${template.backgroundColor || '#ffffff'};border:${template.borderWidth || 0}px ${template.borderStyle || 'solid'} ${template.borderColor || '#c8a96e'};font-family:'Playfair Display',serif;overflow:hidden;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.18);`;
+  const inner = buildCertificateInner(template, submission);
+  return `
+    <div class="card cert-panel">
+      <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:4px">${Icon('award', 20, '')}</div>
+      <h3 style="font-size:20px; font-weight:800">Your official certificate</h3>
+      <p class="muted sm" style="margin-top:4px">Personalized with your name and score.</p>
+      <div id="cert-render-wrapper" style="margin-top:20px; overflow-x:auto">
+        <div id="cert-render" style="${style}">${inner}</div>
+      </div>
+      <div class="cert-toolbar">
+        <button class="btn btn-primary" id="btn-download-cert">${Icon('download', 15)}<span>Download PDF Certificate</span></button>
+      </div>
+    </div>`;
+}
+
+function resultSkeleton() {
+  return `
+    <div class="page">
+      <div class="container-take">
+        <div class="result-skel-card">
+          <span class="sk" style="width:220px; height:22px; display:block"></span>
+          <div style="display:flex; align-items:center; gap:24px; margin-top:18px">
+            <span class="sk sk-round" style="width:120px; height:120px; flex:none; display:block"></span>
+            <div style="flex:1">
+              <span class="sk" style="width:160px; height:18px; display:block"></span>
+              <span class="sk" style="width:220px; height:14px; margin-top:10px; display:block"></span>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:20px 0">
+          ${[64, 80, 70].map(w => `
+            <div class="result-skel-card" style="padding:20px; text-align:center">
+              <span class="sk" style="width:${w}px; height:16px; margin:0 auto; display:block"></span>
+              <span class="sk" style="width:90px; height:12px; margin:12px auto 0; display:block"></span>
+            </div>`).join('')}
+        </div>
+        <div class="result-skel-card">
+          <span class="sk" style="height:24px; width:40%; display:block; margin-bottom:16px"></span>
+          <span class="sk sk-round" style="height:260px; width:100%; display:block"></span>
+        </div>
+      </div>
+    </div>`;
 }
 
 async function downloadCertPDF() {
@@ -840,91 +875,122 @@ async function downloadCertPDF() {
 let cachedCertBlob = null;
 let cachedCertFilename = null;
 
-async function loadAndShowPptxCertPreview(certTemplate, submission) {
-  const container = document.getElementById('pptx-cert-preview-container');
-  const btn = document.getElementById('btn-download-pptx-cert');
+function base64ToBlob(b64, type) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
 
-  try {
-    const pName = submission.participant?.name || participant.name || 'Participant';
-    const dateStr = new Date(submission.submittedAt || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+async function buildPptxCert(submission, template) {
+  const pName = submission.participant?.name || participant.name || 'Participant';
+  const dateStr = new Date(submission.submittedAt || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    const response = await generateCertificatePdf(certTemplate.id, {
-      name: pName,
-      quiz_title: quiz?.title || 'Evaluation',
-      score: String(submission.score ?? 0),
-      total: String(submission.totalPoints ?? 0),
-      percent: (submission.percent ?? 0) + '%',
-      date: dateStr,
-      email: submission.participant?.email || participant.email || '',
-      org: submission.participant?.org || participant.org || ''
-    });
+  const response = await generateCertificatePdf(template.id, {
+    name: pName,
+    quiz_title: quiz?.title || 'Evaluation',
+    score: String(submission.score ?? 0),
+    total: String(submission.totalPoints ?? 0),
+    percent: (submission.percent ?? 0) + '%',
+    date: dateStr,
+    email: submission.participant?.email || participant.email || '',
+    org: submission.participant?.org || participant.org || ''
+  });
 
-    cachedCertBlob = await response.blob();
+  let ext, certBlob, previewBase64 = null, filename;
+  if (response._json) {
+    // New server returns { ext, filename, pdf|pptx, preview (PNG base64) }
+    ext = response.ext;
+    filename = response.filename || `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
+    previewBase64 = response.preview || null;
+    const b64 = ext === 'pdf' ? response.pdf : response.pptx;
+    certBlob = b64 ? base64ToBlob(b64, ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation') : null;
+  } else {
+    // Legacy server: binary response
+    certBlob = await response.blob();
     const contentType = response.headers.get('Content-Type') || '';
-    const ext = contentType.includes('pdf') ? 'pdf' : 'pptx';
-    cachedCertFilename = `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
-    const blobUrl = URL.createObjectURL(cachedCertBlob);
+    ext = contentType.includes('pdf') ? 'pdf' : 'pptx';
+    filename = `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
+  }
+  cachedCertBlob = certBlob;
+  cachedCertFilename = filename;
 
-    if (container) {
-      if (ext === 'pdf') {
-        container.style.padding = '0';
-        container.style.background = 'transparent';
-        container.style.border = 'none';
-        container.innerHTML = `
-          <div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius:var(--r-md); box-shadow:var(--shadow-lg)">
-            <canvas id="pdf-cert-canvas" style="width:100%; height:auto; display:block; background:#fff"></canvas>
-          </div>`;
+  const wrapOpen = `<div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius:var(--r-md); box-shadow:var(--shadow-lg)">`;
+  if (previewBase64) {
+    // PNG preview works on every device (no PDF.js required)
+    return { ext, blob: certBlob, filename, html: `${wrapOpen}<img src="data:image/png;base64,${previewBase64}" style="width:100%; height:auto; display:block; background:#fff"></div>` };
+  }
+  if (ext === 'pdf') {
+    // Legacy server without PNG preview: rendered in place with PDF.js after the page swaps in.
+    return { ext, blob: certBlob, filename, needPdfJs: true, html: `${wrapOpen}<canvas id="pdf-cert-canvas" style="width:100%; height:auto; display:block; background:#fff"></canvas></div>` };
+  }
+  return { ext, blob: certBlob, filename, html: `
+    <div style="padding:32px; text-align:center">
+      <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:10px">${Icon('award', 26, '')}</div>
+      <div style="font-weight:700; font-size:17px">Your personalized certificate is ready</div>
+      <div class="sm muted" style="margin-top:6px">Generated with your name, score (${submission.percent}%) and completion details.</div>
+    </div>` };
+}
 
-        try {
-          const arrayBuffer = await cachedCertBlob.arrayBuffer();
-          const pdfjsLib = await import('pdfjs-dist');
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-          const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 2 });
-          const canvas = document.getElementById('pdf-cert-canvas');
-          if (canvas) {
-            canvas.width = viewport.width;
-            canvas.height = viewport.height;
-            const ctx = canvas.getContext('2d');
-            await page.render({ canvasContext: ctx, viewport }).promise;
-          }
-        } catch (pdfErr) {
-          console.warn('PDF.js render fallback:', pdfErr);
-          container.innerHTML = `
-            <div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius:var(--r-md); box-shadow:var(--shadow-lg)">
-              <object data="${blobUrl}" type="application/pdf" style="width:100%; aspect-ratio:900/636; border:none; display:block"></object>
-            </div>`;
-        }
-      } else {
-        container.innerHTML = `
-          <div style="padding:32px; text-align:center">
-            <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:10px">${Icon('award', 26, '')}</div>
-            <div style="font-weight:700; font-size:17px">Your personalized certificate is ready</div>
-            <div class="sm muted" style="margin-top:6px">Generated with your name, score (${submission.percent}%) and completion details.</div>
-          </div>`;
-      }
-    }
+function pptxCertPanelHtml(built, template) {
+  if (built.error) {
+    return `
+      <div class="card cert-panel">
+        <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:4px">${Icon('award', 20, '')}</div>
+        <h3 style="font-size:20px; font-weight:800">Your official certificate</h3>
+        <p class="muted sm" style="margin-top:4px">Certificates are ready to download.</p>
+        <div style="color:var(--red); font-size:13px; padding:16px">Could not load the live preview. Use the download button below to get your certificate.</div>
+        <div class="cert-toolbar">
+          <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate</span></button>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="card cert-panel">
+      <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:4px">${Icon('award', 20, '')}</div>
+      <h3 style="font-size:20px; font-weight:800">Your official certificate</h3>
+      <p class="muted sm" style="margin-top:4px">Generated from template: ${escapeHtml(template.name || 'Certificate')}</p>
+      ${built.html}
+      <div class="cert-toolbar">
+        <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate (${built.ext === 'pdf' ? 'PDF' : 'PPTX'})</span></button>
+      </div>
+    </div>`;
+}
 
-    if (btn) {
-      btn.innerHTML = `${Icon('download', 15)}<span>${ext === 'pdf' ? 'Download Certificate (PDF)' : 'Download Certificate (PPTX)'}</span>`;
-      btn.onclick = () => {
-        if (cachedCertBlob && cachedCertFilename) {
-          const url = URL.createObjectURL(cachedCertBlob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = cachedCertFilename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          showToast('Certificate downloaded');
-        }
-      };
-    }
-  } catch (err) {
-    console.error('PPTX preview error:', err);
-    if (container) {
-      container.innerHTML = `<div style="color:var(--red); font-size:13px; padding:16px">Could not load the live preview. Use the download button below to get your certificate.</div>`;
+function downloadCachedCert() {
+  if (cachedCertBlob && cachedCertFilename) {
+    const url = URL.createObjectURL(cachedCertBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = cachedCertFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('Certificate downloaded');
+  }
+}
+
+// Legacy fallback: render the PDF preview onto the canvas with PDF.js after the page is in the DOM.
+async function renderPdfCertPreview() {
+  const canvas = document.getElementById('pdf-cert-canvas');
+  if (!canvas || !cachedCertBlob) return;
+  const wrap = canvas.closest('div');
+  try {
+    const arrayBuffer = await cachedCertBlob.arrayBuffer();
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  } catch (pdfErr) {
+    console.warn('PDF.js render fallback:', pdfErr);
+    if (wrap && cachedCertBlob) {
+      const blobUrl = URL.createObjectURL(cachedCertBlob);
+      wrap.innerHTML = `<object data="${blobUrl}" type="application/pdf" style="width:100%; aspect-ratio:900/636; border:none; display:block"></object>`;
     }
   }
 }

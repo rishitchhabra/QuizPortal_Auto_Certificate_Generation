@@ -121,6 +121,12 @@ export async function generateCertificatePdf(templateId, data) {
     try { const body = await response.json(); message = body.error || message; } catch {}
     throw new Error(message);
   }
+  const contentType = response.headers.get('Content-Type') || '';
+  // New server returns JSON with base64 pdf/pptx + PNG preview; legacy returns binary blob.
+  if (contentType.includes('application/json')) {
+    const body = await response.json();
+    return { ...body, _json: true };
+  }
   return response; // Return raw response for blob download
 }
 
