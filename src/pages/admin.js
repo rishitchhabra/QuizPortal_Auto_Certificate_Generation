@@ -3,7 +3,7 @@ import {
   getAllCertTemplates, deleteCertTemplate
 } from '../store.js';
 import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
-import { setupAdmin, adminLogin, teacherLogin, adminLogout, isAdminLoggedIn, hashPassword, currentUser, hasPermission } from '../auth.js';
+import { setupAdmin, adminLogin, teacherLogin, adminLogout, isAdminLoggedIn, hashPassword, currentUser, hasPermission, requireAdmin } from '../auth.js';
 import { Icon, Badge, Btn, StatCard, EmptyState, SectionHead, Dropdown, IconBtn, Inp, Field } from '../components.js';
 
 export async function renderAdminLogin(app) {
