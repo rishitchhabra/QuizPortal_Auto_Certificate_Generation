@@ -6,6 +6,20 @@ import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bi
 import { setupAdmin, adminLogin, teacherLogin, adminLogout, isAdminLoggedIn, hashPassword, currentUser, hasPermission, requireAdmin } from '../auth.js';
 import { Icon, Badge, Btn, StatCard, EmptyState, SectionHead, Dropdown, IconBtn, Inp, Field } from '../components.js';
 
+// Helper: filter quizzes by the teacher's assigned batches
+function filterQuizzesForStaff(quizzes) {
+  const user = currentUser();
+  if (!user || user.type !== 'staff') return quizzes;
+  const assigned = user.staff?.assignedBatches || [];
+  if (!assigned.length) return quizzes; // no filter = see everything
+  return quizzes.filter(q => {
+    const qb = Array.isArray(q.allowedBatches) ? q.allowedBatches : [];
+    // Show quiz if it has overlapping batches, or if it has no batches set (e.g. google-auth quizzes)
+    if (!qb.length) return false;
+    return qb.some(b => assigned.includes(b));
+  });
+}
+
 export async function renderAdminLogin(app) {
   let cfg;
   try {
@@ -136,6 +150,9 @@ export async function renderAdminPanel(app) {
       </div>
     </div>`;
 
+  const user = currentUser();
+  const isStaff = user?.type === 'staff';
+
   let cfg, quizzes, templates;
   try {
     [cfg, quizzes, templates] = await Promise.all([
@@ -153,6 +170,11 @@ export async function renderAdminPanel(app) {
     }
     if (!Array.isArray(quizzes)) quizzes = [];
     if (!Array.isArray(templates)) templates = [];
+
+    // Staff: filter quizzes to only those matching their assigned batches
+    if (isStaff) {
+      quizzes = filterQuizzesForStaff(quizzes);
+    }
   } catch (err) {
     console.error('Admin panel load error:', err);
     app.innerHTML = `
@@ -212,9 +234,9 @@ export async function renderAdminPanel(app) {
         <!-- Header -->
         <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px">
           <div>
-            <div class="eyebrow">${Icon('layout', 14)}<span>Admin Portal</span></div>
+            <div class="eyebrow">${Icon('layout', 14)}<span>${isStaff ? 'Teacher Portal' : 'Admin Portal'}</span></div>
             <h1 class="page-title" style="font-size:32px">Dashboard</h1>
-            <p class="page-sub" style="margin-top:8px">Manage quizzes, live status, responses and certificate templates.</p>
+            <p class="page-sub" style="margin-top:8px">${isStaff ? 'View your assigned quizzes, responses and reports.' : 'Manage quizzes, live status, responses and certificate templates.'}</p>
           </div>
           <div class="page-head-actions">
             <button class="btn btn-ghost btn-sm" id="btn-logout">${Icon('log-out', 14)}<span>Logout</span></button>
@@ -481,7 +503,7 @@ export async function renderAdminPanel(app) {
   });
 
   // OAuth save
-  app.querySelector('#btn-save-oauth').addEventListener('click', async () => {
+  app.querySelector('#btn-save-oauth')?.addEventListener('click', async () => {
     const c = await getAdminConfigAsync();
     c.googleClientId = app.querySelector('#google-client-id').value.trim();
     const cur = prompt('Enter current admin password to save settings');
@@ -492,7 +514,7 @@ export async function renderAdminPanel(app) {
   });
 
   // Password update
-  app.querySelector('#btn-change-pass').addEventListener('click', async () => {
+  app.querySelector('#btn-change-pass')?.addEventListener('click', async () => {
     const cur = app.querySelector('#current-pass').value;
     const nw = app.querySelector('#new-pass').value;
     if (!cur || !nw) { showToast('Fill current and new password', 'error'); return; }
@@ -507,7 +529,7 @@ export async function renderAdminPanel(app) {
   });
 
   // Add admin email
-  app.querySelector('#btn-add-email').addEventListener('click', async () => {
+  app.querySelector('#btn-add-email')?.addEventListener('click', async () => {
     const email = app.querySelector('#new-admin-email').value.trim().toLowerCase();
     if (!email || !email.includes('@')) { showToast('Enter a valid email address', 'error'); return; }
     const c = await getAdminConfigAsync();

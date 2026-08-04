@@ -581,7 +581,29 @@ app.get('/api/submissions', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/submissions', asyncHandler(async (req, res) => {
-  res.json(await insertSubmission(req.body || {}));
+  const body = req.body || {};
+
+  // Server-side batch enforcement for userid-auth quizzes
+  if (body.quizId) {
+    const quizResult = await pool.query('SELECT * FROM quizzes WHERE id = $1', [body.quizId]);
+    const quizRow = quizResult.rows[0];
+    if (quizRow) {
+      const quizData = parseJson(quizRow.data, {});
+      const allowedBatches = Array.isArray(quizData.allowedBatches) ? quizData.allowedBatches.filter(Boolean) : [];
+      if (quizData.authMode === 'userid' && allowedBatches.length > 0) {
+        const participantUserId = body.participant?.userId;
+        if (participantUserId) {
+          const userResult = await pool.query('SELECT class_section FROM users WHERE LOWER(user_id) = LOWER($1)', [participantUserId]);
+          const studentRow = userResult.rows[0];
+          if (studentRow && !allowedBatches.includes(studentRow.class_section)) {
+            return res.status(403).json({ error: `This quiz is restricted to batches: ${allowedBatches.join(', ')}. You are in ${studentRow.class_section || 'an unassigned batch'}.` });
+          }
+        }
+      }
+    }
+  }
+
+  res.json(await insertSubmission(body));
 }));
 
 /* ============================================================
