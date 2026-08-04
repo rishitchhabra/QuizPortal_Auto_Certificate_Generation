@@ -112,9 +112,15 @@ async function renderUserIdSignIn(app) {
       return;
     }
 
-    // Enforce batch restriction if the quiz is limited to specific Class-Sections
-    if (quiz.allowedBatches.length > 0 && !quiz.allowedBatches.includes(student.classSection)) {
-      errEl.textContent = `This quiz is only for batches: ${quiz.allowedBatches.join(', ')}. You are in ${student.classSection || 'an unlisted batch'}.`;
+    // Enforce batch restriction for userid-auth quizzes
+    if (quiz.allowedBatches.length === 0) {
+      errEl.textContent = 'This quiz has no batches mapped yet. Please ask your teacher to assign batches to this quiz.';
+      errEl.style.color = 'var(--red)';
+      submitBtn.disabled = false;
+      return;
+    }
+    if (!quiz.allowedBatches.includes(student.classSection)) {
+      errEl.textContent = `This quiz is only for batches: ${quiz.allowedBatches.join(', ')}. You are in "${student.classSection || 'Unassigned'}".`;
       errEl.style.color = 'var(--red)';
       submitBtn.disabled = false;
       return;

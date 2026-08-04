@@ -2,6 +2,7 @@ import { getAllQuizzes, getQuizReport } from '../store.js';
 import { renderNavbar, showToast, escapeHtml, bindNavbar, formatTime, copyTextToClipboard, renderAccessDenied } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState } from '../components.js';
 import { requireAdmin, hasPermission, currentUser } from '../auth.js';
+import * as XLSX from 'xlsx';
 
 export async function renderReports(app, params) {
   if (!requireAdmin()) return;
@@ -123,11 +124,12 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
             <h2 class="section-title" style="font-size:20px">Batch / class-wise</h2>
             <p class="section-sub">Performance across each class-section</p>
           </div>
-          ${hasPermission('reports', 'export') ? `<div class="section-action"><button class="btn btn-secondary btn-sm" id="btn-export-batch">${Icon('download', 14)}<span>Export CSV</span></button></div>` : ''}
+          ${hasPermission('reports', 'export') ? `<div class="section-action"><button class="btn btn-secondary btn-sm" id="btn-export-batch">${Icon('download', 14)}<span>Export Excel</span></button></div>` : ''}
         </div>
 
         ${report.batches.length > 0 ? `
           <div class="table-wrap" style="margin-bottom:32px">
+            <div class="table-wrap-scroll">
             <table class="table" id="batch-table">
               <thead>
                 <tr>
@@ -156,6 +158,7 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
                 `).join('')}
               </tbody>
             </table>
+            </div>
           </div>
         ` : `<p class="muted sm">No batches mapped to this quiz. Map Class-Sections in the quiz's Audience settings first.</p>`}
 
@@ -164,11 +167,12 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
             <h2 class="section-title" style="font-size:20px">Student-wise</h2>
             <p class="section-sub">Every mapped student — score, pass status, and who did not attempt</p>
           </div>
-          ${hasPermission('reports', 'export') ? `<div class="section-action"><button class="btn btn-secondary btn-sm" id="btn-export-students">${Icon('download', 14)}<span>Export CSV</span></button></div>` : ''}
+          ${hasPermission('reports', 'export') ? `<div class="section-action"><button class="btn btn-secondary btn-sm" id="btn-export-students">${Icon('download', 14)}<span>Export Excel</span></button></div>` : ''}
         </div>
 
         ${report.studentRows.length > 0 ? `
           <div class="table-wrap">
+            <div class="table-wrap-scroll">
             <table class="table" id="student-table">
               <thead>
                 <tr>
@@ -202,6 +206,7 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
                 }).join('')}
               </tbody>
             </table>
+            </div>
           </div>
         ` : `<div class="card">${EmptyState({ icon: 'users', title: 'No students mapped', desc: 'Map batches to this quiz to see individual roll-call reports.' })}</div>`}
       </div>
@@ -210,28 +215,42 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
   bindNavbar(app);
 
   app.querySelector('#btn-export-batch')?.addEventListener('click', () => {
-    exportCSV('batch', report.batches);
+    exportExcel('batch', report.batches, report.quiz.title);
   });
   app.querySelector('#btn-export-students')?.addEventListener('click', () => {
-    exportCSV('students', report.studentRows);
+    exportExcel('students', report.studentRows, report.quiz.title);
   });
 }
 
-function exportCSV(kind, rows) {
-  const filename = `report_${kind}_${Date.now()}.csv`;
-  let csv;
+function exportExcel(kind, rows, quizTitle) {
+  const filename = `report_${kind}_${(quizTitle || '').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') || 'quiz'}_${Date.now()}.xlsx`;
+  let data;
   if (kind === 'batch') {
-    csv = ['Batch,Total,Attempted,Not attempted,Passed,Avg %,Max %,Min %'].concat(
-      rows.map(b => [b.batch, b.totalStudents, b.attempted, b.notAttempted, b.passed, b.avgPercent, b.maxPercent, b.minPercent].join(','))
-    ).join('\n');
+    data = rows.map(b => ({
+      'Batch': b.batch || 'Unassigned',
+      'Total Students': b.totalStudents,
+      'Attempted': b.attempted,
+      'Not Attempted': b.notAttempted,
+      'Passed': b.passed,
+      'Avg %': b.avgPercent,
+      'Max %': b.maxPercent,
+      'Min %': b.minPercent
+    }));
   } else {
-    csv = ['Name,User ID,Batch,Attempted,Score,%,Passed,Time'].concat(
-      rows.map(s => [s.name, s.userId, s.classSection, s.attempted ? 'yes' : 'no', s.score ?? '', s.percent ?? '', s.passed ? 'yes' : 'no', s.attempted ? s.timeTaken : ''].join(','))
-    ).join('\n');
+    data = rows.map(s => ({
+      'Name': s.name,
+      'User ID': s.userId,
+      'Batch': s.classSection,
+      'Attempted': s.attempted ? 'Yes' : 'No',
+      'Score': s.score ?? '',
+      'Percentage': s.percent != null ? `${s.percent}%` : '',
+      'Passed': s.passed ? 'Yes' : 'No',
+      'Time Taken': s.attempted ? formatTime(s.timeTaken) : ''
+    }));
   }
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  showToast('Report exported');
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, kind === 'batch' ? 'Batch Report' : 'Student Report');
+  XLSX.writeFile(wb, filename);
+  showToast('Report exported as Excel');
 }

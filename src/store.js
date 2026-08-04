@@ -163,6 +163,9 @@ export async function addUser(data) {
 export async function deleteUser(id) {
   return apiRequest(`/api/users/${id}`, { method: 'DELETE' });
 }
+export async function bulkDeleteUsers(ids) {
+  return apiRequest('/api/users/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+}
 export async function getBatches() {
   return apiRequest('/api/batches');
 }

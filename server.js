@@ -589,14 +589,17 @@ app.post('/api/submissions', asyncHandler(async (req, res) => {
     const quizRow = quizResult.rows[0];
     if (quizRow) {
       const quizData = parseJson(quizRow.data, {});
-      const allowedBatches = Array.isArray(quizData.allowedBatches) ? quizData.allowedBatches.filter(Boolean) : [];
-      if (quizData.authMode === 'userid' && allowedBatches.length > 0) {
+      if (quizData.authMode === 'userid') {
+        const allowedBatches = Array.isArray(quizData.allowedBatches) ? quizData.allowedBatches.filter(Boolean) : [];
+        if (allowedBatches.length === 0) {
+          return res.status(403).json({ error: 'This quiz has no batches mapped. The quiz creator must assign batches before students can submit.' });
+        }
         const participantUserId = body.participant?.userId;
         if (participantUserId) {
           const userResult = await pool.query('SELECT class_section FROM users WHERE LOWER(user_id) = LOWER($1)', [participantUserId]);
           const studentRow = userResult.rows[0];
           if (studentRow && !allowedBatches.includes(studentRow.class_section)) {
-            return res.status(403).json({ error: `This quiz is restricted to batches: ${allowedBatches.join(', ')}. You are in ${studentRow.class_section || 'an unassigned batch'}.` });
+            return res.status(403).json({ error: `This quiz is restricted to batches: ${allowedBatches.join(', ')}. You are in "${studentRow.class_section || 'Unassigned'}".` });
           }
         }
       }
@@ -677,6 +680,14 @@ app.delete('/api/users/:id', asyncHandler(async (req, res) => {
   await requireStaffPermission(req, 'users', 'delete');
   await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+app.post('/api/users/bulk-delete', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'users', 'delete');
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (!ids.length) return res.status(400).json({ error: 'No IDs provided' });
+  const result = await pool.query('DELETE FROM users WHERE id = ANY($1)', [ids]);
+  res.json({ ok: true, deleted: result.rowCount });
 }));
 
 app.get('/api/batches', asyncHandler(async (req, res) => {

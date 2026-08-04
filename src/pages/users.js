@@ -1,5 +1,5 @@
-import { getUsers, addUser, deleteUser, getBatches, importUsers } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar, renderAccessDenied } from '../utils.js';
+import { getUsers, addUser, deleteUser, bulkDeleteUsers, getBatches, importUsers } from '../store.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, renderAccessDenied, showModal } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
 
@@ -62,40 +62,50 @@ export async function renderUsers(app) {
           </select>
         </div>
 
+        ${canDel ? `<div id="bulk-bar" class="bulk-bar" style="display:none">
+          <span class="bulk-count" id="bulk-count">0 selected</span>
+          <button class="btn btn-danger btn-sm" id="btn-bulk-delete">${Icon('trash', 14)}<span>Delete Selected</span></button>
+          <button class="btn btn-ghost btn-sm" id="btn-bulk-clear">${Icon('x', 14)}<span>Clear</span></button>
+        </div>` : ''}
+
         ${users.length > 0 ? `
           ${groupKeys.map(cls => `
             <div style="margin-bottom:28px">
               <div class="section-head" style="margin:0 0 14px">
                 <div>
                   <h2 class="section-title" style="font-size:20px">${escapeHtml(cls || 'Unassigned')}</h2>
-                  <p class="section-sub">${grouped[cls].length} students${cls ? ' · auto User-ID: name + 3-digit suffix' : ' · no Class-Section set — add one by editing the student'}</p>
+                  <p class="section-sub">${grouped[cls].length} students${cls ? '' : ' · no Class-Section set — add one by editing the student'}</p>
                 </div>
               </div>
               <div class="table-wrap">
-                <table class="table">
-                  <thead>
-                    <tr>
-                      <th style="width:40px">#</th>
-                      <th>Name</th>
-                      <th style="width:170px">User ID</th>
-                      <th style="width:60px">Batch</th>
-                      <th style="width:170px">Parent mobile</th>
-                      ${canDel ? `<th style="width:80px; text-align:right">Actions</th>` : ''}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${grouped[cls].map((u, i) => `
-                      <tr data-id="${u.id}">
-                        <td class="mono muted">${i + 1}</td>
-                        <td><span style="font-weight:600">${escapeHtml(u.name)}</span></td>
-                        <td>${Badge(u.userId, { tone: 'violet' })}</td>
-                        <td class="muted sm">${escapeHtml(u.classSection)}</td>
-                        <td class="muted sm">${escapeHtml(u.parentMobile || '—')}</td>
-                        ${canDel ? `<td style="text-align:right"><button class="icon-btn icon-btn-danger user-del" data-id="${u.id}" data-name="${escapeHtml(u.name)}" aria-label="Delete ${escapeHtml(u.name)}" >${Icon('trash', 15)}</button></td>` : ''}
+                <div class="table-wrap-scroll">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        ${canDel ? `<th style="width:40px"><input type="checkbox" class="table-check select-all-group" data-group="${escapeHtml(cls)}" aria-label="Select all in ${escapeHtml(cls || 'Unassigned')}"></th>` : ''}
+                        <th style="width:40px">#</th>
+                        <th>Name</th>
+                        <th style="width:170px">User ID</th>
+                        <th style="width:60px">Batch</th>
+                        <th style="width:170px">Parent mobile</th>
+                        ${canDel ? `<th style="width:80px; text-align:right">Actions</th>` : ''}
                       </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      ${grouped[cls].map((u, i) => `
+                        <tr data-id="${u.id}">
+                          ${canDel ? `<td><input type="checkbox" class="table-check user-check" data-id="${u.id}" data-group="${escapeHtml(cls)}" aria-label="Select ${escapeHtml(u.name)}"></td>` : ''}
+                          <td class="mono muted">${i + 1}</td>
+                          <td><span style="font-weight:600">${escapeHtml(u.name)}</span></td>
+                          <td>${Badge(u.userId, { tone: 'violet' })}</td>
+                          <td class="muted sm">${escapeHtml(u.classSection)}</td>
+                          <td class="muted sm">${escapeHtml(u.parentMobile || '—')}</td>
+                          ${canDel ? `<td style="text-align:right"><button class="icon-btn icon-btn-danger user-del" data-id="${u.id}" data-name="${escapeHtml(u.name)}" aria-label="Delete ${escapeHtml(u.name)}" >${Icon('trash', 15)}</button></td>` : ''}
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           `).join('')}
@@ -117,6 +127,8 @@ export async function renderUsers(app) {
   applyFilters(app);
   if (canAdd) app.querySelector('#btn-add-user')?.addEventListener('click', () => openAddModal(app, batches));
   if (canImport) app.querySelectorAll('#btn-import').forEach(btn => btn.addEventListener('click', () => openImportModal(app)));
+
+  // Single delete
   if (canDel) {
     app.querySelectorAll('.user-del').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -126,6 +138,66 @@ export async function renderUsers(app) {
           renderUsers(app);
         }
       });
+    });
+
+    // Checkbox selection logic
+    const bulkBar = app.querySelector('#bulk-bar');
+    const bulkCount = app.querySelector('#bulk-count');
+    const allChecks = app.querySelectorAll('.user-check');
+    const groupSelects = app.querySelectorAll('.select-all-group');
+
+    function updateBulkBar() {
+      const checked = app.querySelectorAll('.user-check:checked');
+      const count = checked.length;
+      if (bulkBar) {
+        bulkBar.style.display = count > 0 ? 'flex' : 'none';
+        if (bulkCount) bulkCount.textContent = `${count} selected`;
+      }
+      // Update group select-all checkboxes
+      groupSelects.forEach(gs => {
+        const group = gs.dataset.group;
+        const groupChecks = app.querySelectorAll(`.user-check[data-group="${CSS.escape(group)}"]`);
+        const groupChecked = app.querySelectorAll(`.user-check[data-group="${CSS.escape(group)}"]:checked`);
+        gs.checked = groupChecks.length > 0 && groupChecks.length === groupChecked.length;
+        gs.indeterminate = groupChecked.length > 0 && groupChecked.length < groupChecks.length;
+      });
+      // Highlight selected rows
+      allChecks.forEach(ch => {
+        const row = ch.closest('tr');
+        if (row) row.classList.toggle('selected', ch.checked);
+      });
+    }
+
+    allChecks.forEach(ch => ch.addEventListener('change', updateBulkBar));
+
+    groupSelects.forEach(gs => {
+      gs.addEventListener('change', () => {
+        const group = gs.dataset.group;
+        const groupChecks = app.querySelectorAll(`.user-check[data-group="${CSS.escape(group)}"]`);
+        groupChecks.forEach(ch => { ch.checked = gs.checked; });
+        updateBulkBar();
+      });
+    });
+
+    app.querySelector('#btn-bulk-delete')?.addEventListener('click', () => {
+      const checked = app.querySelectorAll('.user-check:checked');
+      const ids = Array.from(checked).map(ch => ch.dataset.id);
+      if (!ids.length) return;
+      showModal(`Delete ${ids.length} students?`, `This will permanently remove <strong>${ids.length}</strong> students from the database. This action cannot be undone.`, async () => {
+        try {
+          const res = await bulkDeleteUsers(ids);
+          showToast(`${res.deleted || ids.length} students deleted`);
+          renderUsers(app);
+        } catch (e) {
+          showToast(e.message || 'Bulk delete failed', 'error');
+        }
+      }, { danger: true, confirmText: `Delete ${ids.length} students` });
+    });
+
+    app.querySelector('#btn-bulk-clear')?.addEventListener('click', () => {
+      allChecks.forEach(ch => { ch.checked = false; });
+      groupSelects.forEach(gs => { gs.checked = false; gs.indeterminate = false; });
+      updateBulkBar();
     });
   }
 }
@@ -155,7 +227,7 @@ function openAddModal(app, batches) {
         <div class="field">
           <label class="field-label">Full name <span class="field-req">*</span></label>
           <input type="text" class="input" id="m-name" placeholder="e.g. Aarav Sharma">
-          <div class="field-hint">User ID auto-generates as name + random 3-digit suffix.</div>
+          <div class="field-hint">User ID auto-generates as first name + random 3-digit suffix.</div>
         </div>
         <div class="field">
           <label class="field-label">Class-Section</label>
@@ -198,9 +270,10 @@ function openImportModal(app) {
   modal.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true" aria-label="Import students">
       <div class="modal-title">Import students from Excel</div>
-      <p class="muted sm" style="margin:6px 0 16px">Upload an <strong>.xlsx</strong>, <strong>.xls</strong> or <strong>.csv</strong> file. Recognized columns: <strong>Name</strong> (required), <strong>Class-Section</strong> (e.g. <code>7-B</code> or <code>Class 7</code>), <strong>Parent's Mobile</strong>. A <strong>User ID</strong> (name + 3-digit suffix) is generated automatically for each student.</p>
-      <div class="flex" style="gap:10px">
-        <input type="file" class="input" id="import-file" accept=".xlsx,.xls,.csv" style="flex:1">
+      <p class="muted sm" style="margin:6px 0 16px">Upload an <strong>.xlsx</strong>, <strong>.xls</strong> or <strong>.csv</strong> file. Recognized columns: <strong>Name</strong> (required), <strong>Class-Section / Batch</strong>, <strong>Parent's Mobile</strong>. A <strong>User ID</strong> (first name + 3-digit suffix) is generated automatically.</p>
+      <div class="file-upload-area" id="file-drop-area">
+        <input type="file" id="import-file" accept=".xlsx,.xls,.csv">
+        <div class="file-label" id="file-label">${Icon('upload', 20)}<br><strong>Click to choose file</strong> or drag & drop<br><span class="xs muted">.xlsx, .xls, .csv</span></div>
       </div>
       <div id="import-status" style="margin-top:12px"></div>
       <div class="flex" style="gap:10px; justify-content:flex-end; margin-top:18px">
@@ -212,9 +285,23 @@ function openImportModal(app) {
   requestAnimationFrame(() => modal.classList.add('active'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
+  // File upload area visual feedback
+  const fileInput = modal.querySelector('#import-file');
+  const dropArea = modal.querySelector('#file-drop-area');
+  const fileLabel = modal.querySelector('#file-label');
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) {
+      dropArea.classList.add('has-file');
+      fileLabel.innerHTML = `${Icon('check-circle', 20)}<br><strong>${escapeHtml(fileInput.files[0].name)}</strong><br><span class="xs muted">${(fileInput.files[0].size / 1024).toFixed(1)} KB</span>`;
+    } else {
+      dropArea.classList.remove('has-file');
+      fileLabel.innerHTML = `${Icon('upload', 20)}<br><strong>Click to choose file</strong> or drag & drop<br><span class="xs muted">.xlsx, .xls, .csv</span>`;
+    }
+  });
+
   modal.querySelector('#m-cancel').addEventListener('click', () => modal.remove());
   modal.querySelector('#m-upload').addEventListener('click', async () => {
-    const file = modal.querySelector('#import-file').files[0];
+    const file = fileInput.files[0];
     if (!file) { showToast('Choose a file first', 'error'); return; }
     const status = modal.querySelector('#import-status');
     status.innerHTML = `<div class="flex items-center gap-sm"><svg class="icon icon-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span class="sm muted">Importing…</span></div>`;

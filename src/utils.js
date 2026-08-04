@@ -40,7 +40,6 @@ export function renderNavbar() {
           <a class="nav-link" href="#/">${Icon('home', 15)}<span>Home</span></a>
           ${isAdmin || isStaff ? `
             <a class="nav-link" href="#/admin">${Icon('layout', 15)}<span>Admin</span></a>
-            <button class="btn btn-secondary btn-sm" id="btn-nav-logout">${Icon('log-out', 15)}<span>${isStaff ? 'Logout' : 'Logout'}</span></button>
           ` : `
             <a href="#/admin-login" class="btn btn-secondary btn-sm">${Icon('lock', 14)}<span>Admin Login</span></a>
           `}
