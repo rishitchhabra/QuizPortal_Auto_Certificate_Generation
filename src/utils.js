@@ -1,4 +1,4 @@
-import { isAdminLoggedIn } from './auth.js';
+import { isAdminLoggedIn, currentUser } from './auth.js';
 import { Icon } from './components.js';
 
 let toastContainer = null;
@@ -24,6 +24,8 @@ export function showToast(message, type = 'success') {
 
 export function renderNavbar() {
   const isAdmin = isAdminLoggedIn();
+  const user = currentUser();
+  const isStaff = user?.type === 'staff';
   return `
     <nav class="navbar" aria-label="Primary">
       <div class="nav-inner">
@@ -36,9 +38,9 @@ export function renderNavbar() {
         </a>
         <div class="nav-actions">
           <a class="nav-link" href="#/">${Icon('home', 15)}<span>Home</span></a>
-          ${isAdmin ? `
+          ${isAdmin || isStaff ? `
             <a class="nav-link" href="#/admin">${Icon('layout', 15)}<span>Admin</span></a>
-            <button class="btn btn-secondary btn-sm" id="btn-nav-logout">${Icon('log-out', 15)}<span>Logout</span></button>
+            <button class="btn btn-secondary btn-sm" id="btn-nav-logout">${Icon('log-out', 15)}<span>${isStaff ? 'Logout' : 'Logout'}</span></button>
           ` : `
             <a href="#/admin-login" class="btn btn-secondary btn-sm">${Icon('lock', 14)}<span>Admin Login</span></a>
           `}
@@ -49,12 +51,11 @@ export function renderNavbar() {
 
 // Post-render hook: bind the navbar logout button when rendered by a page.
 export function bindNavbar(app) {
-  app.querySelector('#btn-nav-logout')?.addEventListener('click', () => {
-    import('./auth.js').then(({ adminLogout }) => {
-      adminLogout();
-      showToast('Logged out of Admin Portal');
-      window.location.hash = '#/';
-    });
+  app.querySelector('#btn-nav-logout')?.addEventListener('click', async () => {
+    const { adminLogout } = await import('./auth.js');
+    adminLogout();
+    showToast('Logged out');
+    window.location.hash = '#/';
   });
 }
 

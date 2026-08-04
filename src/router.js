@@ -1,4 +1,4 @@
-import { isAdminLoggedIn } from './auth.js';
+import { isAdminLoggedIn, currentUser } from './auth.js';
 import { Icon } from './components.js';
 import { renderNavbar } from './utils.js';
 
@@ -57,10 +57,15 @@ export function startRouter() {
     }
 
     // Admin Route Protection
-    const protectedRoutes = ['/admin', '/create', '/edit', '/certificates', '/responses'];
+    const protectedRoutes = ['/admin', '/create', '/edit', '/certificates', '/responses', '/reports'];
     if (protectedRoutes.includes(routeKey) && !isAdminLoggedIn()) {
-      window.location.hash = '#/admin-login';
-      return;
+      const user = currentUser();
+      if (user?.type === 'staff') {
+        // Staff are allowed into the portal; individual pages do their own permission checks
+      } else {
+        window.location.hash = '#/admin-login';
+        return;
+      }
     }
 
     const handler = routes[routeKey];

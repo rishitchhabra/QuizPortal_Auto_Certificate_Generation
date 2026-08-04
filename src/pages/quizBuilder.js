@@ -1,4 +1,4 @@
-import { saveQuiz, getQuiz, generateId, getAllCertTemplates } from '../store.js';
+import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches } from '../store.js';
 import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
 import { Icon, Badge, Field, Inp, Txta, Sel, Toggle, EmptyState } from '../components.js';
 
@@ -39,6 +39,8 @@ export async function renderQuizBuilder(app, params) {
       collectEmail: true,
       collectPhone: false,
       collectOrg: false,
+      authMode: 'google',
+      allowedBatches: [],
       limitPerUser: true,
       questions: [],
       createdAt: new Date().toISOString()
@@ -127,6 +129,21 @@ function renderGeneralTab() {
       <div class="q-editor-card">
         <div class="q-editor-top"><div class="q-editor-title">Audience</div></div>
         <div class="panel" style="display:flex; flex-direction:column">
+          <div class="field" style="margin-bottom:14px">
+            <label class="field-label" for="quiz-auth-mode">Login method</label>
+            <select class="input select" id="quiz-auth-mode">
+              <option value="google" ${currentQuiz.authMode === 'google' ? 'selected' : ''}>Google Sign-In (anyone with a Google account)</option>
+              <option value="userid" ${currentQuiz.authMode === 'userid' ? 'selected' : ''}>Student User-ID (from the Students Master)</option>
+            </select>
+            <p class="hint" id="quiz-auth-mode-hint">${currentQuiz.authMode === 'userid' ? 'Students enter only their auto-generated User-ID. Their name is pulled from the master database.' : 'Participants sign in with Google so their name and email are captured automatically.'}</p>
+          </div>
+
+          <div id="quiz-batch-block" ${currentQuiz.authMode !== 'userid' ? 'style="display:none"' : ''}>
+            <label class="field-label" for="quiz-allowed-batches">Allow only these Class-Sections</label>
+            <div class="chip-toggle" id="quiz-allowed-batches"></div>
+            <p class="hint">Leave all off to allow every batch. Choose specific Class-Sections to restrict who can attempt.</p>
+          </div>
+
           ${Toggle({ id: 'quiz-collect-phone', checked: currentQuiz.collectPhone, label: 'Collect phone number', hint: 'Ask participants for their phone before starting.' })}
           ${Toggle({ id: 'quiz-collect-org', checked: currentQuiz.collectOrg, label: 'Collect institution', hint: 'Ask for the participant\'s school or institution.' })}
         </div>
@@ -483,6 +500,17 @@ function bindEvents(app) {
   app.querySelector('#quiz-passing')?.addEventListener('input', e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); });
   app.querySelector('#quiz-deadline')?.addEventListener('input', e => { currentQuiz.deadline = e.target.value || ''; markDirty(); });
   app.querySelector('#quiz-cert-template')?.addEventListener('change', e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); });
+  app.querySelector('#quiz-auth-mode')?.addEventListener('change', e => {
+    currentQuiz.authMode = e.target.value;
+    markDirty();
+    const block = app.querySelector('#quiz-batch-block');
+    const hint = app.querySelector('#quiz-auth-mode-hint');
+    if (block) block.style.display = currentQuiz.authMode === 'userid' ? '' : 'none';
+    if (hint) hint.textContent = currentQuiz.authMode === 'userid'
+      ? 'Students enter only their auto-generated User-ID. Their name is pulled from the master database.'
+      : 'Participants sign in with Google so their name and email are captured automatically.';
+  });
+  bindBatches(app);
   bindToggle(app, 'quiz-collect-phone', 'collectPhone');
   bindToggle(app, 'quiz-collect-org', 'collectOrg');
   bindToggle(app, 'quiz-limit-user', 'limitPerUser');
@@ -640,6 +668,32 @@ function bindEvents(app) {
 function bindToggle(app, id, key) {
   const el = app.querySelector(`#${id}`);
   if (el) el.addEventListener('change', () => { currentQuiz[key] = el.checked; markDirty(); });
+}
+
+async function bindBatches(app) {
+  const container = app.querySelector('#quiz-allowed-batches');
+  if (!container || currentQuiz.authMode !== 'userid') return;
+  let batches = [];
+  try { batches = await getBatches(); } catch { /* ignore */ }
+  currentQuiz.allowedBatches = Array.isArray(currentQuiz.allowedBatches) ? currentQuiz.allowedBatches : [];
+  container.innerHTML = batches.length
+    ? batches.map(b => {
+        const on = currentQuiz.allowedBatches.includes(b);
+        return `<button type="button" class="chip ${on ? 'chip-on' : ''}" data-batch="${escapeHtml(b)}">${on ? Icon('check', 13) : ''}<span>${escapeHtml(b)}</span></button>`;
+      }).join('')
+    : `<p class="hint" style="margin:0">No Class-Sections found in the Students Master yet. Add students first.</p>`;
+  container.querySelectorAll('.chip').forEach(c => {
+    c.addEventListener('click', () => {
+      const batch = c.dataset.batch;
+      if (currentQuiz.allowedBatches.includes(batch)) {
+        currentQuiz.allowedBatches = currentQuiz.allowedBatches.filter(x => x !== batch);
+      } else {
+        currentQuiz.allowedBatches.push(batch);
+      }
+      c.classList.toggle('chip-on');
+      markDirty();
+    });
+  });
 }
 
 function updateSidebarPreview(i) {

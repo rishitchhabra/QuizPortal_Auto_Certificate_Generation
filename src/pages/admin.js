@@ -2,8 +2,8 @@ import {
   getAdminConfigAsync, saveAdminConfig, getAllQuizzes, saveQuiz, deleteQuiz, getSubmissions,
   getAllCertTemplates, deleteCertTemplate
 } from '../store.js';
-import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bindNavbar, subjectFor } from '../utils.js';
-import { setupAdmin, adminLogin, adminLogout, isAdminLoggedIn, hashPassword } from '../auth.js';
+import { renderNavbar, showToast, showModal, escapeHtml, copyTextToClipboard, bindNavbar } from '../utils.js';
+import { setupAdmin, adminLogin, teacherLogin, adminLogout, isAdminLoggedIn, hashPassword, currentUser, hasPermission } from '../auth.js';
 import { Icon, Badge, Btn, StatCard, EmptyState, SectionHead, Dropdown, IconBtn, Inp, Field } from '../components.js';
 
 export async function renderAdminLogin(app) {
@@ -37,12 +37,24 @@ export async function renderAdminLogin(app) {
           <div style="text-align:center; margin-bottom:24px">
             <img src="/logo.png" alt="Gyan International School" style="height:40px; margin:0 auto 16px">
             <h1 style="font-size:22px; font-weight:800; letter-spacing:-0.02em">${needsSetup ? 'Set up the admin portal' : 'Welcome back'}</h1>
-            <p class="muted sm" style="margin-top:4px">${needsSetup ? 'Create your master admin ID and password.' : 'Sign in with your admin credentials.'}</p>
+            <p class="muted sm" style="margin-top:4px">${needsSetup ? 'Create your master admin ID and password.' : 'Sign in with your admin or teacher credentials.'}</p>
           </div>
 
-          ${Field({ label: 'Admin ID', htmlFor: 'admin-id', control: Inp({ id: 'admin-id', value: needsSetup ? 'admin' : '', placeholder: 'Enter Admin ID', attrs: 'autocomplete="username"' }) })}
+          ${needsSetup ? '' : `
+            <div class="login-role-switch" role="tablist" aria-label="Account type">
+              <button type="button" class="login-role active" data-role="admin" role="tab" aria-selected="true">${Icon('shield', 15)}<span>Admin</span></button>
+              <button type="button" class="login-role" data-role="teacher" role="tab" aria-selected="false">${Icon('user', 15)}<span>Teacher</span></button>
+            </div>
+          `}
+
+          ${needsSetup ? `
+            ${Field({ label: 'Admin ID', htmlFor: 'admin-id', control: Inp({ id: 'admin-id', value: 'admin', placeholder: 'Enter Admin ID', attrs: 'autocomplete="username"' }) })}
+          ` : `
+            ${Field({ label: 'Login ID', htmlFor: 'admin-id', control: Inp({ id: 'admin-id', placeholder: 'Enter User ID', attrs: 'autocomplete="username"' }) })}
+          `}
           ${Field({ label: 'Password', htmlFor: 'admin-pass', control: Inp({ type: 'password', id: 'admin-pass', placeholder: 'Enter Password', attrs: 'autocomplete="current-password"' }) })}
           ${needsSetup ? Field({ label: 'Confirm Password', htmlFor: 'admin-pass2', control: Inp({ type: 'password', id: 'admin-pass2', placeholder: 'Confirm Password' }) }) : ''}
+          ${!needsSetup ? `<p class="xs text-3" id="login-role-hint" style="margin-bottom:8px">Signing in as <strong>Admin</strong>.</p>` : ''}
 
           <button class="btn btn-primary btn-lg btn-block" id="btn-admin-submit">
             ${Icon(needsSetup ? 'shield' : 'log-in', 16)}<span>${needsSetup ? 'Set Up Admin Portal' : 'Sign In'}</span>
@@ -52,6 +64,21 @@ export async function renderAdminLogin(app) {
     </div>`;
 
   bindNavbar(app);
+  let role = 'admin';
+
+  app.querySelectorAll('.login-role').forEach(btn => {
+    btn.addEventListener('click', () => {
+      role = btn.dataset.role;
+      app.querySelectorAll('.login-role').forEach(b => { b.classList.toggle('active', b === btn); b.setAttribute('aria-selected', b === btn ? 'true' : 'false'); });
+      const hint = app.querySelector('#login-role-hint');
+      if (hint) hint.innerHTML = role === 'admin' ? 'Signing in as <strong>Admin</strong>.' : 'Signing in as <strong>Teacher</strong> — your accessible features depend on permissions set by the admin.';
+      const lbl = app.querySelector('.field-label');
+      if (lbl && app.querySelector('#admin-id')) {
+        lbl.textContent = role === 'admin' ? 'Login ID' : 'Teacher User ID';
+      }
+    });
+  });
+
   app.querySelector('#btn-admin-submit').addEventListener('click', async () => {
     const id = app.querySelector('#admin-id').value.trim();
     const pass = app.querySelector('#admin-pass').value;
@@ -64,8 +91,20 @@ export async function renderAdminLogin(app) {
       await setupAdmin(id, pass);
       showToast('Admin setup complete');
       window.location.hash = '#/admin';
+      return;
+    }
+
+    let ok;
+    if (role === 'teacher') {
+      ok = await teacherLogin(id, pass);
+      if (ok) {
+        showToast('Welcome back, Teacher');
+        window.location.hash = '#/admin';
+      } else {
+        showToast('Invalid Teacher ID or Password', 'error');
+      }
     } else {
-      const ok = await adminLogin(id, pass);
+      ok = await adminLogin(id, pass);
       if (ok) {
         showToast('Welcome back, Admin');
         window.location.hash = '#/admin';
@@ -82,10 +121,7 @@ export async function renderAdminLogin(app) {
 }
 
 export async function renderAdminPanel(app) {
-  if (!isAdminLoggedIn()) {
-    window.location.hash = '#/admin-login';
-    return;
-  }
+  if (!requireAdmin()) return;
 
   // Loading state
   app.innerHTML = `
@@ -229,6 +265,43 @@ export async function renderAdminPanel(app) {
             })}
           </div>
         `}
+
+        <!-- Management -->
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Management</h2>
+            <p class="section-sub">Students master database, teacher roles &amp; permissions, and analytics reports</p>
+          </div>
+        </div>
+
+        <div class="grid grid-3" style="margin-bottom:8px">
+          <a href="#/users" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+              <span class="stat-icon stat-blue" style="width:40px; height:40px">${Icon('users', 17)}</span>
+              <span class="xs muted">Students</span>
+            </div>
+            <h3 style="font-weight:700; font-size:15px">Students Master</h3>
+            <p class="muted sm" style="margin-top:4px">Upload the student roll via Excel, assign auto User-IDs, and manage Class-Section batches.</p>
+          </a>
+
+          <a href="#/roles" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+              <span class="stat-icon stat-violet" style="width:40px; height:40px">${Icon('shield', 17)}</span>
+              <span class="xs muted">Access control</span>
+            </div>
+            <h3 style="font-weight:700; font-size:15px">Roles &amp; Permissions</h3>
+            <p class="muted sm" style="margin-top:4px">Create teacher accounts and grant module-wise permissions plus their assigned batches.</p>
+          </a>
+
+          <a href="#/reports" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
+              <span class="stat-icon stat-green" style="width:40px; height:40px">${Icon('bar-chart', 17)}</span>
+              <span class="xs muted">Analytics</span>
+            </div>
+            <h3 style="font-weight:700; font-size:15px">Reports</h3>
+            <p class="muted sm" style="margin-top:4px">Batch-wise and quiz-wise performance with not-attempted tracking and CSV export.</p>
+          </a>
+        </div>
 
         <!-- Certificate templates -->
         <div class="section-head">

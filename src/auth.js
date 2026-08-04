@@ -1,4 +1,4 @@
-import { getAdminConfigAsync, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser } from './store.js';
+import { getAdminConfigAsync, saveAdminConfig, getAuthSession, setAuthSession, clearAuthSession, getGoogleUser, setGoogleUser, adminLoginWithToken, staffLogin, fetchMe, logoutSession } from './store.js';
 
 // SHA-256 hash
 export async function hashPassword(password) {
@@ -32,18 +32,56 @@ export async function setupAdmin(id, password) {
   return true;
 }
 
-// Admin Login
+// Admin Login (returns a server-issued session token)
 export async function adminLogin(id, password) {
   const hash = await hashPassword(password);
   try {
-    const base = window.SERVER_BASE ?? '';
-    const r = await fetch(`${base}/api/admin-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, passwordHash: hash }) });
-    if (r.ok) { setAuthSession({ type: 'admin', id }); return true; }
+    const r = await adminLoginWithToken(id, hash);
+    if (r.ok && r.token) {
+      setAuthSession({ type: 'admin', id, token: r.token, permissions: r.permissions || null });
+      return true;
+    }
   } catch {}
   return false;
 }
 
-export function adminLogout() { clearAuthSession(); }
+// Teacher / Staff Login
+export async function teacherLogin(userId, password) {
+  const hash = await hashPassword(password);
+  try {
+    const r = await staffLogin(userId, hash);
+    if (r.ok && r.token) {
+      setAuthSession({ type: 'staff', token: r.token, staff: r.staff || null });
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+// Restore a session from a stored token (called on startup)
+export async function restoreSession() {
+  const session = getAuthSession();
+  if (!session?.token) return null;
+  try {
+    const me = await fetchMe();
+    if (me?.ok) {
+      if (me.type === 'admin') {
+        setAuthSession({ type: 'admin', id: me.id, token: session.token, permissions: me.permissions || null });
+      } else if (me.type === 'staff') {
+        setAuthSession({ type: 'staff', token: session.token, staff: me.staff || null });
+      }
+      return me;
+    }
+  } catch {
+    clearAuthSession();
+  }
+  return null;
+}
+
+export async function adminLogout() {
+  try { await logoutSession(); } catch {}
+  clearAuthSession();
+}
 
 export function isAdminLoggedIn() {
   const session = getAuthSession();
@@ -51,8 +89,28 @@ export function isAdminLoggedIn() {
   return false;
 }
 
+export function currentUser() {
+  return getAuthSession();
+}
+
+export function hasPermission(moduleKey, action) {
+  const session = getAuthSession();
+  if (!session) return false;
+  if (session.type === 'admin') return true;
+  const perms = session.staff?.permissions || {};
+  const module = perms[moduleKey];
+  if (!module) return false;
+  if (module.full === true) return true;
+  if (action) return module[action] === true;
+  return Object.values(module).some(Boolean);
+}
+
 export function requireAdmin() {
-  if (!isAdminLoggedIn()) { window.location.hash = '#/admin-login'; return false; }
+  const session = getAuthSession();
+  if (!session || (session.type !== 'admin' && session.type !== 'staff')) {
+    window.location.hash = '#/admin-login';
+    return false;
+  }
   return true;
 }
 

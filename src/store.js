@@ -4,8 +4,32 @@ const AUTH_KEY = 'sciquiz_auth';
 // For Vite dev with a separate API server, set window.SERVER_BASE = 'http://localhost:3001'.
 const SERVER_BASE = window.SERVER_BASE ?? '';
 
-async function apiRequest(path, options = {}) {
-  const response = await fetch(`${SERVER_BASE}${path}`, options);
+export async function apiRequest(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const session = getAuthSession();
+  if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
+  if (options.body && typeof options.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  const response = await fetch(`${SERVER_BASE}${path}`, { ...options, headers });
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const body = await response.json();
+      message = body.error || message;
+    } catch {}
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+export async function apiRequestRaw(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const session = getAuthSession();
+  if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
+  const response = await fetch(`${SERVER_BASE}${path}`, { ...options, headers });
   if (!response.ok) {
     let message = response.statusText;
     try {
@@ -14,7 +38,7 @@ async function apiRequest(path, options = {}) {
     } catch {}
     throw new Error(message);
   }
-  return response.json();
+  return response;
 }
 
 export function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -45,6 +69,9 @@ export async function getSubmissions(quizId) {
 }
 export async function getSubmissionsByEmail(quizId, email) {
   return apiRequest(`/api/submissions?quizId=${encodeURIComponent(quizId)}&email=${encodeURIComponent(email)}`);
+}
+export async function getSubmissionsByUserId(quizId, userId) {
+  return apiRequest(`/api/submissions?quizId=${encodeURIComponent(quizId)}&userId=${encodeURIComponent(userId)}`);
 }
 
 // Certificate Templates
@@ -122,3 +149,71 @@ export function getGoogleUser() {
 }
 export function setGoogleUser(u) { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); }
 export function clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); }
+
+// Students (master database)
+export async function getUsers(filters = {}) {
+  const qs = new URLSearchParams();
+  if (filters.classSection) qs.set('classSection', filters.classSection);
+  if (filters.search) qs.set('search', filters.search);
+  return apiRequest(`/api/users?${qs.toString()}`);
+}
+export async function addUser(data) {
+  return apiRequest('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+export async function deleteUser(id) {
+  return apiRequest(`/api/users/${id}`, { method: 'DELETE' });
+}
+export async function getBatches() {
+  return apiRequest('/api/batches');
+}
+export async function importUsers(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const headers = new Headers();
+  const session = getAuthSession();
+  if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
+  const response = await fetch(`${SERVER_BASE}/api/users/import`, { method: 'POST', headers, body: formData });
+  if (!response.ok) {
+    let message = response.statusText;
+    try { const body = await response.json(); message = body.error || message; } catch {}
+    throw new Error(message);
+  }
+  return response.json();
+}
+export async function verifyUserId(userId) {
+  return apiRequest('/api/users/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+}
+
+// Staff / teachers
+export async function getStaff() {
+  return apiRequest('/api/staff');
+}
+export async function addStaff(data) {
+  return apiRequest('/api/staff', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+export async function updateStaff(id, data) {
+  return apiRequest(`/api/staff/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+export async function deleteStaff(id) {
+  return apiRequest(`/api/staff/${id}`, { method: 'DELETE' });
+}
+
+// Reports
+export async function getQuizReport(quizId) {
+  return apiRequest(`/api/reports/${quizId}`);
+}
+
+// Session auth
+export async function staffLogin(userId, passwordHash) {
+  return apiRequest('/api/staff-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, passwordHash }) });
+}
+export async function adminLoginWithToken(id, passwordHash) {
+  return apiRequest('/api/admin-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, passwordHash }) });
+}
+export async function fetchMe() {
+  return apiRequest('/api/auth/me');
+}
+export async function logoutSession() {
+  try { return await apiRequest('/api/auth/logout', { method: 'POST' }); }
+  catch { return null; }
+}

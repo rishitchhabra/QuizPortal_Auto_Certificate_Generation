@@ -62,6 +62,9 @@
   --red: #EF4444;
   --red-soft: #FEF2F2;
   --red-border: #FECACA;
+  --info-soft: #EAF2FF;
+  --info-border: #BFD7FE;
+  --info-strong: #2F6FE4;
 
   /* Radius — soft & friendly */
   --r-xs: 8px;
@@ -1207,3 +1210,54 @@ input, textarea, select { font-family: inherit; }
   .quiz-head-right { width: 100%; justify-content: space-between; }
   .quiz-title-sm { max-width: 58vw; }
 }
+
+/* ============================================================
+   Login role switch (Admin / Teacher)
+   ============================================================ */
+.login-role-switch { display: flex; gap: 6px; padding: 5px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--r-lg); margin-bottom: 20px; }
+.login-role { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; border-radius: var(--r-md); background: transparent; border: 1px solid transparent; color: var(--text-2); font-weight: 600; font-size: 14px; cursor: pointer; transition: all .16s var(--ease); }
+.login-role:hover { color: var(--text); background: var(--surface); }
+.login-role.active { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 3px 10px var(--primary-soft); }
+.login-role .icon { width: 15px; height: 15px; }
+
+/* ============================================================
+   Chip toggles (batch picker + permission matrix)
+   ============================================================ */
+.chip-toggle { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.chip-toggle .chip, .chip-toggle .perm-chip, .chip-toggle .batch-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-2); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all .15s var(--ease); line-height: 1;
+}
+.chip-toggle .chip:hover, .chip-toggle .perm-chip:hover, .chip-toggle .batch-chip:hover { border-color: var(--primary-border); color: var(--text); }
+.chip-toggle .chip .icon, .chip-toggle .perm-chip .icon, .chip-toggle .batch-chip .icon { width: 13px; height: 13px; }
+.chip-toggle .chip-on, .chip-toggle .perm-chip.on, .chip-toggle .batch-chip.on {
+  background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: 0 2px 8px var(--primary-soft);
+}
+.chip-toggle .chip-off, .chip-toggle .perm-chip:not(.on), .chip-toggle .batch-chip:not(.on) { opacity: 0.85; }
+
+/* ============================================================
+   User-ID sign-in form (take quiz)
+   ============================================================ */
+.userid-form { margin-top: 18px; text-align: left; }
+.userid-form .input { text-align: center; letter-spacing: 0.04em; }
+.userid-form .btn { width: 100%; justify-content: center; }
+
+/* ============================================================
+   Permission matrix (roles page)
+   ============================================================ */
+.perm-module { border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 16px; background: var(--surface); }
+.perm-module-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--surface-subtle); flex-wrap: wrap; }
+.perm-module-title { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; }
+.perm-module-head .perm-full { font-size: 13px; }
+.perm-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px; }
+.perm-chips .perm-chip { padding: 6px 12px; font-size: 12px; }
+
+/* Admin / Users / Roles page utilities */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.actions-cell { display: flex; gap: 6px; justify-content: flex-end; }
+.section-action { display: flex; gap: 8px; }
+.page-head-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.info-note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; background: var(--info-soft); border: 1px solid var(--info-border); border-radius: var(--r-md); color: var(--text); font-size: 14px; }
+.info-note .icon { flex: none; margin-top: 1px; color: var(--info-strong); }

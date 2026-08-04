@@ -7,9 +7,11 @@ import { Pool } from 'pg';
 import basicAuth from 'express-basic-auth';
 import multer from 'multer';
 import PizZip from 'pizzip';
+import * as XLSX from 'xlsx';
 import Docxtemplater from 'docxtemplater';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,6 +142,43 @@ async function initDb() {
       google_client_id TEXT NOT NULL DEFAULT '',
       is_setup BOOLEAN NOT NULL DEFAULT false,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
+  // Student master database
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      user_id TEXT NOT NULL UNIQUE,
+      class_section TEXT NOT NULL DEFAULT '',
+      parent_mobile TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
+  // Staff / teacher accounts with role-based permissions
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS staff (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      user_id TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL DEFAULT '',
+      permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+      assigned_batches JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+
+  // Server-side auth sessions (tokens)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'admin',
+      staff_id TEXT,
+      admin_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days'
     );
   `);
 
@@ -287,6 +326,80 @@ async function verifyAdminPassword(req) {
   }
 }
 
+// --- Session token auth ---
+function randomToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+async function createSession(type, staffId, adminId) {
+  const token = randomToken();
+  await pool.query(
+    `INSERT INTO sessions (token, type, staff_id, admin_id, expires_at) VALUES ($1, $2, $3, $4, now() + interval '7 days')`,
+    [token, type, staffId || null, adminId || null]
+  );
+  return token;
+}
+
+async function deleteSession(token) {
+  await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+}
+
+// Returns { type, staff_id, admin_id } or null if invalid/expired
+async function resolveSession(req) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : (req.headers['x-session-token'] || '');
+  if (!token) return null;
+  const result = await pool.query('SELECT * FROM sessions WHERE token = $1 AND expires_at > now()', [token]);
+  return result.rows[0] || null;
+}
+
+const DEFAULT_ADMIN_PERMISSIONS = {
+  dashboard: { view: true },
+  quizzes: { view: true, create: true, edit: true, delete: true, publish: true, leaderboard: true },
+  reports: { batchWise: true, quizWise: true, notAttempted: true, export: true },
+  users: { view: true, add: true, edit: true, delete: true, import: true },
+  settings: { manageStaff: true, manageRoles: true, manageTemplates: true, system: true }
+};
+
+const DEFAULT_TEACHER_PERMISSIONS = {
+  dashboard: { view: true },
+  quizzes: { view: true, create: false, edit: false, delete: false, publish: false, leaderboard: true },
+  reports: { batchWise: true, quizWise: true, notAttempted: true, export: true },
+  users: { view: false, add: false, edit: false, delete: false, import: false },
+  settings: { manageStaff: false, manageRoles: false, manageTemplates: false, system: false }
+};
+
+function hasPermission(perms, moduleKey, action) {
+  if (!perms) return false;
+  const module = perms[moduleKey];
+  if (!module) return false;
+  if (module.full === true) return true;
+  if (action) return module[action] === true;
+  return Object.values(module).some(Boolean);
+}
+
+async function requireAuth(req) {
+  const session = await resolveSession(req);
+  if (!session) {
+    const error = new Error('Not authorized');
+    error.statusCode = 401;
+    throw error;
+  }
+  return session;
+}
+
+async function requireStaffPermission(req, moduleKey, action) {
+  const session = await requireAuth(req);
+  if (session.type === 'admin') return session;
+  const staff = await pool.query('SELECT * FROM staff WHERE id = $1', [session.staff_id]);
+  if (!staff.rows[0]) throw Object.assign(new Error('staff not found'), { statusCode: 401 });
+  const perms = parseJson(staff.rows[0].permissions, {});
+  if (!hasPermission(perms, moduleKey, action)) {
+    throw Object.assign(new Error('Permission denied'), { statusCode: 403 });
+  }
+  return session;
+}
+
 app.use('/admin-ui', basicAuth({ users: { [ADMIN_USER]: ADMIN_PASS }, challenge: true }));
 app.get('/admin-ui', (req, res) => res.sendFile(path.join(process.cwd(), 'server-admin.html')));
 
@@ -356,6 +469,64 @@ app.post('/api/admin-login', asyncHandler(async (req, res) => {
   if (!row || !row.password_hash) return res.status(401).json({ error: 'not configured' });
   if (row.id !== id) return res.status(401).json({ error: 'invalid id' });
   if (row.password_hash !== passwordHash) return res.status(401).json({ error: 'invalid password' });
+  const token = await createSession('admin', null, row.id);
+  res.json({ ok: true, token, type: 'admin', permissions: DEFAULT_ADMIN_PERMISSIONS });
+}));
+
+// Teacher / staff login — returns a session token
+app.post('/api/staff-login', asyncHandler(async (req, res) => {
+  const { userId, passwordHash } = req.body || {};
+  const result = await pool.query('SELECT * FROM staff WHERE user_id = $1', [userId || '']);
+  const staff = result.rows[0];
+  if (!staff) return res.status(401).json({ error: 'invalid id or password' });
+  if (staff.password_hash !== passwordHash) return res.status(401).json({ error: 'invalid id or password' });
+  const token = await createSession('staff', staff.id, null);
+  const perms = parseJson(staff.permissions, DEFAULT_TEACHER_PERMISSIONS);
+  res.json({
+    ok: true,
+    token,
+    type: 'staff',
+    staff: {
+      id: staff.id,
+      name: staff.name,
+      userId: staff.user_id,
+      permissions: perms,
+      assignedBatches: parseJson(staff.assigned_batches, [])
+    }
+  });
+}));
+
+// Validate a session token
+app.get('/api/auth/me', asyncHandler(async (req, res) => {
+  const session = await resolveSession(req);
+  if (!session) return res.status(401).json({ error: 'Not authorized' });
+
+  if (session.type === 'admin') {
+    const row = await getAdminConfigRow();
+    return res.json({ ok: true, type: 'admin', id: row?.id || session.admin_id, permissions: DEFAULT_ADMIN_PERMISSIONS });
+  }
+
+  const result = await pool.query('SELECT * FROM staff WHERE id = $1', [session.staff_id]);
+  const staff = result.rows[0];
+  if (!staff) return res.status(401).json({ error: 'staff not found' });
+  res.json({
+    ok: true,
+    type: 'staff',
+    staff: {
+      id: staff.id,
+      name: staff.name,
+      userId: staff.user_id,
+      permissions: parseJson(staff.permissions, DEFAULT_TEACHER_PERMISSIONS),
+      assignedBatches: parseJson(staff.assigned_batches, [])
+    }
+  });
+}));
+
+// Log out — revoke the current token
+app.post('/api/auth/logout', asyncHandler(async (req, res) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : (req.headers['x-session-token'] || '');
+  if (token) await deleteSession(token);
   res.json({ ok: true });
 }));
 
@@ -384,7 +555,7 @@ app.delete('/api/quizzes/:id', asyncHandler(async (req, res) => {
 }));
 
 app.get('/api/submissions', asyncHandler(async (req, res) => {
-  const { quizId, email } = req.query;
+  const { quizId, email, userId } = req.query;
   const params = [];
   const conditions = [];
 
@@ -396,6 +567,10 @@ app.get('/api/submissions', asyncHandler(async (req, res) => {
     params.push(email);
     conditions.push(`participant->>'email' = $${params.length}`);
   }
+  if (userId) {
+    params.push(userId);
+    conditions.push(`participant->>'userId' = $${params.length}`);
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await pool.query(`SELECT * FROM submissions ${where} ORDER BY submitted_at DESC`, params);
@@ -404,6 +579,311 @@ app.get('/api/submissions', asyncHandler(async (req, res) => {
 
 app.post('/api/submissions', asyncHandler(async (req, res) => {
   res.json(await insertSubmission(req.body || {}));
+}));
+
+/* ============================================================
+   Students (users master database)
+   ============================================================ */
+
+function generateUserId(name) {
+  const base = (name || '').trim().replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 20) || 'student';
+  const suffix = Math.floor(100 + Math.random() * 900);
+  return `${base}${suffix}`;
+}
+
+app.get('/api/users', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'users', 'view');
+  const { classSection, search } = req.query;
+  const params = [];
+  const conditions = [];
+  if (classSection) {
+    params.push(classSection);
+    conditions.push(`class_section = $${params.length}`);
+  }
+  if (search) {
+    params.push(`%${search}%`);
+    conditions.push(`(name ILIKE $${params.length} OR user_id ILIKE $${params.length} OR parent_mobile ILIKE $${params.length})`);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const result = await pool.query(`SELECT * FROM users ${where} ORDER BY class_section, name LIMIT 2000`, params);
+  res.json(result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    userId: row.user_id,
+    classSection: row.class_section,
+    parentMobile: row.parent_mobile,
+    createdAt: row.created_at?.toISOString?.() || row.created_at
+  })));
+}));
+
+app.post('/api/users', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'users', 'add');
+  const body = req.body || {};
+  const name = (body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'name required' });
+  let userId = (body.userId || '').trim();
+  if (!userId) {
+    // auto-generate, ensure uniqueness
+    for (let i = 0; i < 10; i++) {
+      const candidate = generateUserId(name);
+      const dup = await pool.query('SELECT 1 FROM users WHERE user_id = $1', [candidate]);
+      if (dup.rows.length === 0) { userId = candidate; break; }
+    }
+    if (!userId) return res.status(400).json({ error: 'could not generate unique user id' });
+  }
+  const result = await pool.query(
+    `INSERT INTO users (id, name, user_id, class_section, parent_mobile)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name, class_section = EXCLUDED.class_section, parent_mobile = EXCLUDED.parent_mobile
+     RETURNING *`,
+    [generateId(), name, userId, body.classSection || '', body.parentMobile || '']
+  );
+  res.json(result.rows[0]);
+}));
+
+app.delete('/api/users/:id', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'users', 'delete');
+  await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+app.get('/api/batches', asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT DISTINCT class_section FROM users WHERE class_section <> '' ORDER BY class_section`
+  );
+  res.json(result.rows.map(r => r.class_section));
+}));
+
+// Bulk import students from Excel (xlsx) or CSV
+const userUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+app.post('/api/users/import', userUpload.single('file'), asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'users', 'import');
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  let rows;
+  try {
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  } catch (e) {
+    return res.status(400).json({ error: 'Could not parse file: ' + e.message });
+  }
+
+  if (!rows.length) return res.status(400).json({ error: 'No rows found in file' });
+
+  let inserted = 0, skipped = 0, errors = [];
+  const used = new Set();
+  const existing = await pool.query('SELECT user_id FROM users');
+  existing.rows.forEach(r => used.add(r.user_id));
+
+  const cols = Object.keys(rows[0]);
+  const norm = cols.map(c => c.toLowerCase().replace(/[\s_\-().]/g, ''));
+  const nameIdx = norm.findIndex(c => c.includes('name'));
+  const classIdx = norm.findIndex(c => c.includes('class') || c.includes('section'));
+  const mobileIdx = norm.findIndex(c => c.includes('mobile') || c.includes('phone') || c.includes('parent'));
+  const snoIdx = norm.findIndex(c => c.includes('sno') || c.includes('sr') || c.includes('serial'));
+
+  if (nameIdx < 0) return res.status(400).json({ error: 'Missing "Name" column. Include a column with student names.' });
+
+  for (const row of rows) {
+    const name = String(row[cols[nameIdx]] || '').trim();
+    const classSection = classIdx >= 0 ? String(row[cols[classIdx]] || '').trim().replace(/\s+/g, ' ') : '';
+    const parentMobile = mobileIdx >= 0 ? String(row[cols[mobileIdx]] || '').trim() : '';
+    if (!name) { skipped++; continue; }
+    let userId = '';
+    for (let i = 0; i < 20; i++) {
+      const candidate = generateUserId(name);
+      if (!used.has(candidate)) { userId = candidate; break; }
+    }
+    if (!userId) { errors.push(name); continue; }
+    used.add(userId);
+    try {
+      await pool.query(
+        `INSERT INTO users (id, name, user_id, class_section, parent_mobile) VALUES ($1,$2,$3,$4,$5)`,
+        [generateId(), name, userId, classSection, parentMobile]
+      );
+      inserted++;
+    } catch (e) {
+      if (e.code === '23505') { skipped++; } else { errors.push(name); }
+    }
+  }
+
+  res.json({ ok: true, inserted, skipped, errors: errors.slice(0, 20), batches: await pool.query('SELECT DISTINCT class_section FROM users WHERE class_section <> \'\' ORDER BY class_section').then(r => r.rows.map(x => x.class_section)) });
+}));
+
+// Look up a student by user ID (used by quiz User-ID login)
+app.post('/api/users/verify', asyncHandler(async (req, res) => {
+  const { userId } = req.body || {};
+  if (!userId) return res.status(400).json({ error: 'user id required' });
+  const result = await pool.query('SELECT * FROM users WHERE LOWER(user_id) = LOWER($1)', [String(userId).trim()]);
+  if (!result.rows[0]) return res.status(404).json({ error: 'User not found. Check your User ID and try again.' });
+  const row = result.rows[0];
+  res.json({ ok: true, user: { id: row.id, name: row.name, userId: row.user_id, classSection: row.class_section, parentMobile: row.parent_mobile } });
+}));
+
+/* ============================================================
+   Staff / teachers
+   ============================================================ */
+
+app.get('/api/staff', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'settings', 'manageStaff');
+  const result = await pool.query('SELECT id, name, user_id, permissions, assigned_batches, created_at FROM staff ORDER BY created_at DESC');
+  res.json(result.rows.map(row => ({
+    id: row.id,
+    name: row.name,
+    userId: row.user_id,
+    permissions: parseJson(row.permissions, DEFAULT_TEACHER_PERMISSIONS),
+    assignedBatches: parseJson(row.assigned_batches, []),
+    createdAt: row.created_at?.toISOString?.() || row.created_at
+  })));
+}));
+
+app.post('/api/staff', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'settings', 'manageStaff');
+  const body = req.body || {};
+  if (!body.name || !body.userId || !body.passwordHash) return res.status(400).json({ error: 'name, userId and passwordHash required' });
+  const dup = await pool.query('SELECT 1 FROM staff WHERE user_id = $1', [body.userId]);
+  if (dup.rows.length) return res.status(409).json({ error: 'User ID already exists' });
+  await pool.query(
+    `INSERT INTO staff (id, name, user_id, password_hash, permissions, assigned_batches) VALUES ($1,$2,$3,$4,$5,$6)`,
+    [generateId(), body.name, body.userId, body.passwordHash, JSON.stringify(body.permissions || DEFAULT_TEACHER_PERMISSIONS), JSON.stringify(body.assignedBatches || [])]
+  );
+  res.json({ ok: true });
+}));
+
+app.put('/api/staff/:id', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'settings', 'manageStaff');
+  const body = req.body || {};
+  const result = await pool.query('SELECT * FROM staff WHERE id = $1', [req.params.id]);
+  if (!result.rows[0]) return res.status(404).json({ error: 'staff not found' });
+  const current = result.rows[0];
+  await pool.query(
+    `UPDATE staff SET name = $1, user_id = $2, password_hash = $3, permissions = $4, assigned_batches = $5 WHERE id = $6`,
+    [
+      body.name || current.name,
+      body.userId || current.user_id,
+      body.passwordHash || current.password_hash,
+      JSON.stringify(body.permissions || parseJson(current.permissions, {})),
+      JSON.stringify(body.assignedBatches || parseJson(current.assigned_batches, [])),
+      req.params.id
+    ]
+  );
+  res.json({ ok: true });
+}));
+
+app.delete('/api/staff/:id', asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'settings', 'manageStaff');
+  await pool.query('DELETE FROM staff WHERE id = $1', [req.params.id]);
+  res.json({ ok: true });
+}));
+
+/* ============================================================
+   Reports (batch / class-wise and quiz-wise)
+   ============================================================ */
+
+app.get('/api/reports/:quizId', asyncHandler(async (req, res) => {
+  const session = await requireAuth(req);
+  const quizResult = await pool.query('SELECT * FROM quizzes WHERE id = $1', [req.params.quizId]);
+  const quiz = quizResult.rows[0];
+  if (!quiz) return res.status(404).json({ error: 'quiz not found' });
+  const quizData = parseJson(quiz.data, {});
+
+  // If a staff member, restrict to their assigned batches
+  let allowedBatches = null;
+  if (session.type === 'staff') {
+    const staff = await pool.query('SELECT * FROM staff WHERE id = $1', [session.staff_id]);
+    const perms = parseJson(staff.rows[0]?.permissions, {});
+    if (!hasPermission(perms, 'reports', 'batchWise')) throw Object.assign(new Error('Permission denied'), { statusCode: 403 });
+    const assigned = parseJson(staff.rows[0]?.assigned_batches, []);
+    if (assigned.length) allowedBatches = assigned;
+  }
+
+  const subsResult = await pool.query('SELECT * FROM submissions WHERE quiz_id = $1 ORDER BY percent DESC, time_taken ASC', [req.params.quizId]);
+  const subs = subsResult.rows.map(mapSubmission);
+
+  // Quiz may restrict to certain batches (users data)
+  let quizBatches = (quizData.allowedBatches || []).filter(Boolean);
+  if (allowedBatches) quizBatches = quizBatches.filter(b => allowedBatches.includes(b));
+
+  let users = [];
+  if (quizBatches.length) {
+    const usersResult = await pool.query('SELECT * FROM users WHERE class_section = ANY($1) ORDER BY class_section, name', [quizBatches]);
+    users = usersResult.rows.map(r => ({ id: r.id, name: r.name, userId: r.user_id, classSection: r.class_section, parentMobile: r.parent_mobile }));
+  }
+
+  // Mark submissions by userId when available
+  const attemptedSet = new Set();
+  const byUser = {};
+  subs.forEach(s => {
+    const uid = s.participant?.userId || s.participant?.email;
+    if (uid) { attemptedSet.add(String(uid).toLowerCase()); byUser[String(uid).toLowerCase()] = s; }
+  });
+
+  // Batch-wise report
+  const batches = {};
+  (quizBatches.length ? quizBatches : Array.from(new Set(users.map(u => u.classSection)))).forEach(b => {
+    batches[b] = {
+      batch: b,
+      totalStudents: 0,
+      attempted: 0,
+      notAttempted: 0,
+      passed: 0,
+      avgPercent: 0,
+      maxPercent: 0,
+      minPercent: 0
+    };
+  });
+  users.forEach(u => {
+    const key = u.classSection;
+    if (!batches[key]) batches[key] = { batch: key, totalStudents: 0, attempted: 0, notAttempted: 0, passed: 0, avgPercent: 0, maxPercent: 0, minPercent: 100 };
+    const b = batches[key];
+    b.totalStudents++;
+    const attempted = attemptedSet.has(String(u.userId).toLowerCase());
+    if (attempted) {
+      b.attempted++;
+      const sub = byUser[String(u.userId).toLowerCase()];
+      if (sub.passed) b.passed++;
+      b.avgPercent += sub.percent;
+      b.maxPercent = Math.max(b.maxPercent, sub.percent);
+      b.minPercent = Math.min(b.minPercent, sub.percent);
+    } else {
+      b.notAttempted++;
+    }
+  });
+  Object.values(batches).forEach(b => {
+    if (b.attempted > 0) b.avgPercent = Math.round(b.avgPercent / b.attempted);
+    if (b.minPercent === 100 && b.attempted === 0) b.minPercent = 0;
+  });
+
+  // Student-level rows grouped by batch
+  const studentRows = users.map(u => {
+    const attempted = attemptedSet.has(String(u.userId).toLowerCase());
+    const sub = byUser[String(u.userId).toLowerCase()];
+    return {
+      id: u.id,
+      name: u.name,
+      userId: u.userId,
+      classSection: u.classSection,
+      attempted,
+      score: sub ? sub.score : null,
+      totalPoints: sub ? sub.totalPoints : null,
+      percent: sub ? sub.percent : null,
+      passed: sub ? sub.passed : false,
+      timeTaken: sub ? sub.timeTaken : null,
+      submittedAt: sub ? sub.submittedAt : null
+    };
+  }).sort((a, b) => (b.percent ?? -1) - (a.percent ?? -1));
+
+  res.json({
+    quiz: { id: quiz.id, title: quiz.title || quizData.title || '', questionsCount: quizData.questions?.length || 0 },
+    totalStudents: users.length,
+    totalAttempted: subs.length,
+    notAttemptedCount: Math.max(0, users.length - subs.length),
+    overallAverage: subs.length ? Math.round(subs.reduce((s, x) => s + x.percent, 0) / subs.length) : 0,
+    passCount: subs.filter(s => s.passed).length,
+    batches: Object.values(batches),
+    studentRows
+  });
 }));
 
 app.get('/api/cert-templates', asyncHandler(async (req, res) => {

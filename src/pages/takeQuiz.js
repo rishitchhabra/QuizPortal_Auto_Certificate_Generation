@@ -1,4 +1,4 @@
-import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getGoogleUser, generateCertificatePdf } from '../store.js';
+import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getSubmissionsByUserId, getGoogleUser, generateCertificatePdf, verifyUserId } from '../store.js';
 import { renderNavbar, showToast, formatTime, shuffleArray, showModal, escapeHtml, bindNavbar, subjectFor, burstConfetti } from '../utils.js';
 import { initGoogleAuth, renderGoogleButton, getGoogleClientId } from '../auth.js';
 import { Icon, Badge } from '../components.js';
@@ -31,22 +31,112 @@ export async function renderTakeQuiz(app, params) {
   answers = {}; quizStarted = false; quizSubmitted = false; participant = {};
   if (timerInterval) clearInterval(timerInterval);
 
-  const clientId = await getGoogleClientId();
-  const guser = getGoogleUser();
+  quiz.authMode = quiz.authMode || 'google';
+  quiz.allowedBatches = Array.isArray(quiz.allowedBatches) ? quiz.allowedBatches : [];
 
-  if (!clientId) {
-    renderNotice(app, { icon: Icon('shield', 26), title: 'Google Sign-In required', desc: 'Google OAuth configuration is missing in Admin Portal.' });
-    return () => {};
-  }
-
-  if (!guser) {
-    renderGoogleSignIn(app, clientId);
+  if (quiz.authMode === 'userid') {
+    renderUserIdSignIn(app);
   } else {
-    participant.name = guser.name || '';
-    participant.email = guser.email || '';
-    renderParticipantForm(app);
+    const clientId = await getGoogleClientId();
+    const guser = getGoogleUser();
+
+    if (!clientId) {
+      renderNotice(app, { icon: Icon('shield', 26), title: 'Google Sign-In required', desc: 'Google OAuth configuration is missing in Admin Portal.' });
+      return () => {};
+    }
+
+    if (!guser) {
+      renderGoogleSignIn(app, clientId);
+    } else {
+      participant.name = guser.name || '';
+      participant.email = guser.email || '';
+      renderParticipantForm(app);
+    }
   }
   return () => { if (timerInterval) clearInterval(timerInterval); };
+}
+
+async function renderUserIdSignIn(app) {
+  const subj = quizSubject();
+  app.innerHTML = `
+    ${renderNavbar()}
+    <div class="page fade-in">
+      <div class="container-take" style="padding-top:24px">
+        <div class="quiz-panel" style="text-align:left">
+          ${quizIntroHeader()}
+
+          <div class="signin-promo ${subj.cls}" style="--subj:${subj.color}">
+            <div class="signin-promo-bubbles"></div>
+            <div class="signin-promo-inner">
+              <div class="signin-promo-icon">${Icon('id-badge', 24)}</div>
+              <div class="signin-promo-title">Enter your User ID</div>
+              <div class="signin-promo-sub">Type the User ID shared by your school to start the quiz. Your name will be pulled automatically.</div>
+
+              <form id="userid-form" class="userid-form" novalidate>
+                <input type="text" id="userid-input" class="input input-lg" placeholder="e.g. aaravsharma291" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="User ID">
+                <button type="submit" class="btn btn-primary btn-lg btn-block" style="justify-content:center; margin-top:12px">
+                  ${Icon('log-in', 16)}<span>Start Quiz</span>
+                </button>
+                <p class="xs text-3" id="userid-err" style="margin-top:12px; text-align:center; min-height:16px"></p>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  bindNavbar(app);
+  const form = app.querySelector('#userid-form');
+  const input = app.querySelector('#userid-input');
+  const errEl = app.querySelector('#userid-err');
+  const submitBtn = form.querySelector('button[type="submit"]');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const raw = input.value.trim().toLowerCase();
+    if (!raw) { errEl.textContent = 'Please enter your User ID.'; errEl.style.color = 'var(--red)'; return; }
+    errEl.textContent = 'Checking…';
+    errEl.style.color = 'var(--text-2)';
+    submitBtn.disabled = true;
+    let student = null;
+    try { student = (await verifyUserId(raw))?.user || null; } catch (err) {
+      errEl.textContent = err.message || 'Something went wrong. Please try again.';
+      errEl.style.color = 'var(--red)';
+      submitBtn.disabled = false;
+      return;
+    }
+    if (!student) {
+      errEl.textContent = 'No student found with that User ID. Check with your teacher.';
+      errEl.style.color = 'var(--red)';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Enforce batch restriction if the quiz is limited to specific Class-Sections
+    if (quiz.allowedBatches.length > 0 && !quiz.allowedBatches.includes(student.classSection)) {
+      errEl.textContent = `This quiz is only for batches: ${quiz.allowedBatches.join(', ')}. You are in ${student.classSection || 'an unlisted batch'}.`;
+      errEl.style.color = 'var(--red)';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Enforce one attempt per student
+    if (quiz.limitPerUser) {
+      const existing = await getSubmissionsByUserId(quiz.id, student.userId).catch(() => []);
+      if (existing.length > 0) {
+        renderResults(existing[0]);
+        return;
+      }
+    }
+
+    participant.userId = student.userId;
+    participant.name = student.name || '';
+    participant.classSection = student.classSection || '';
+    if (!participant.email) participant.email = `${student.userId}@student.local`;
+    renderParticipantForm(app);
+  });
+
+  setTimeout(() => input.focus(), 50);
 }
 
 function renderNotice(app, { icon, title, desc }) {
