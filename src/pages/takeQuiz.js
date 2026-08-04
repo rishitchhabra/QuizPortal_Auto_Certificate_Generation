@@ -57,6 +57,7 @@ export async function renderTakeQuiz(app, params) {
 }
 
 async function renderUserIdSignIn(app) {
+  scrollPageTop();
   const subj = quizSubject();
   app.innerHTML = `
     ${renderNavbar()}
@@ -230,6 +231,7 @@ function quizIntroHeader() {
 }
 
 function renderGoogleSignIn(app, clientId) {
+  scrollPageTop();
   const subj = quizSubject();
   app.innerHTML = `
     ${renderNavbar()}
@@ -271,6 +273,7 @@ function renderGoogleSignIn(app, clientId) {
 }
 
 async function renderParticipantForm(app) {
+  scrollPageTop();
   if (quiz.limitPerUser && participant.email) {
     const existing = await getSubmissionsByEmail(quiz.id, participant.email);
     if (existing.length > 0) {
@@ -379,6 +382,7 @@ function fieldLabel(label, required) {
 
 /* CONTINUOUS SCROLL QUIZ SHELL */
 function renderContinuousQuizShell(app) {
+  scrollPageTop();
   const total = quiz.questions.length;
   const letters = 'ABCDEFGHIJ';
   const subj = quizSubject();
@@ -594,8 +598,12 @@ async function submitQuiz(force = false) {
 }
 
 /* ============================ RESULTS ============================ */
-function renderResults(submission) {
+function scrollPageTop() {
   window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+}
+
+function renderResults(submission) {
+  scrollPageTop();
   const app = document.getElementById('app');
 
   // Show a skeleton while the results + certificate are being prepared, and only
