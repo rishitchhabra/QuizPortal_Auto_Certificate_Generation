@@ -61,7 +61,9 @@ export async function teacherLogin(userId, password) {
 // Restore a session from a stored token (called on startup)
 export async function restoreSession() {
   const session = getAuthSession();
-  if (!session?.token) return null;
+  if (!session) return null;
+  // Legacy sessions (pre-token format) or malformed ones are invalid.
+  if (!session.token) { clearAuthSession(); return null; }
   try {
     const me = await fetchMe();
     if (me?.ok) {

@@ -272,6 +272,8 @@ function openTeacherEditor(app, teacher, batches) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
   // Batch chips
   modal.querySelectorAll('.batch-chip').forEach(chip => {
@@ -316,8 +318,18 @@ function openTeacherEditor(app, teacher, batches) {
   modal.querySelector('#t-cancel')?.addEventListener('click', () => modal.remove());
   modal.querySelector('#t-reset')?.addEventListener('click', () => {
     Object.assign(perms, defaultPermissions());
-    renderRoles(app);
-    modal.remove();
+    modal.querySelectorAll('.perm-module').forEach(moduleEl => {
+      const key = moduleEl.dataset.module;
+      const mod = perms[key];
+      const fullInput = moduleEl.querySelector('.perm-full input');
+      if (fullInput) fullInput.checked = !!mod.full;
+      moduleEl.querySelectorAll('.perm-chip').forEach(c => {
+        const on = mod[c.dataset.perm] === true;
+        c.classList.toggle('on', on);
+        c.innerHTML = on ? `${Icon('check', 12)}<span>${c.dataset.permLabel}</span>` : `<span>${c.dataset.permLabel}</span>`;
+      });
+    });
+    showToast('Permissions reset to teacher defaults');
   });
 
   modal.querySelector('#t-save').addEventListener('click', async () => {

@@ -167,6 +167,8 @@ function openAddModal(app, batches) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
   modal.querySelector('#m-cancel').addEventListener('click', () => modal.remove());
   modal.querySelector('#m-save').addEventListener('click', async () => {
@@ -201,6 +203,8 @@ function openImportModal(app) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('active'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
   modal.querySelector('#m-cancel').addEventListener('click', () => modal.remove());
   modal.querySelector('#m-upload').addEventListener('click', async () => {
