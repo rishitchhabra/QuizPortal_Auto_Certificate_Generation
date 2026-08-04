@@ -1,5 +1,5 @@
 import { getStaff, addStaff, updateStaff, deleteStaff, getBatches } from '../store.js';
-import { renderNavbar, showToast, escapeHtml, bindNavbar, showModal, renderAccessDenied } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, bindNavbar, showModal, renderAccessDenied, batchPickerHTML, bindBatchPicker } from '../utils.js';
 import { Icon, Badge, StatCard } from '../components.js';
 import { requireAdmin, hashPassword, hasPermission } from '../auth.js';
 
@@ -223,14 +223,14 @@ function openTeacherEditor(app, teacher, batches) {
         </div>
       ` : ''}
 
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:16px 0">
-        <label class="field-label" style="margin:0">Assigned report batches</label>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end">
-          ${batches.map(b => `
-            <button type="button" class="chip-toggle batch-chip ${assigned.has(b) ? 'on' : ''}" data-batch="${escapeHtml(b)}">${escapeHtml(b)}</button>
-          `).join('')}
-          ${batches.length === 0 ? `<span class="xs muted">No batches yet — import students to create batches.</span>` : ''}
-        </div>
+      <div style="margin:16px 0">
+        ${batchPickerHTML({
+          id: 't-batch-picker',
+          label: 'Assigned report batches',
+          hint: 'Teachers can view reports only for the batches selected here.',
+          selected: Array.from(assigned),
+          batches
+        })}
       </div>
 
       <div style="display:flex; flex-direction:column; gap:12px">
@@ -279,13 +279,10 @@ function openTeacherEditor(app, teacher, batches) {
   requestAnimationFrame(() => modal.classList.add('active'));
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
-  // Batch chips
-  modal.querySelectorAll('.batch-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const b = chip.dataset.batch;
-      if (assigned.has(b)) assigned.delete(b); else assigned.add(b);
-      chip.classList.toggle('on', assigned.has(b));
-    });
+  // Batch picker — keeps `assigned` in sync
+  const picker = modal.querySelector('#t-batch-picker');
+  if (picker) bindBatchPicker(picker, {
+    onSelected: (sel) => { assigned.clear(); sel.forEach(x => assigned.add(x)); }
   });
 
   // Full module toggle: toggling enables/disables all its chips

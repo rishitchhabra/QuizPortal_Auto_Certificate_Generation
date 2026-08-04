@@ -225,3 +225,74 @@ export function sortBatches(arr) {
     return String(a).localeCompare(String(b));
   });
 }
+
+const PICKER_ICONS = {
+  search: '<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>'
+};
+
+// Reusable multi-select picker for batches/class-sections — searchable, scrollable,
+// with select-all / clear. Works well for 20-40+ batches.
+export function batchPickerHTML({ id, label, hint = '', selected = [], batches = [] }) {
+  const sel = new Set(selected || []);
+  const sorted = sortBatches(batches);
+  return `
+    <div class="batch-picker" id="${id}">
+      <div class="batch-picker-head">
+        <label class="field-label" style="margin:0">${label}</label>
+        <span class="xs muted" data-pk="count">${sel.size} of ${sorted.length} selected</span>
+      </div>
+      <div class="batch-picker-tools">
+        <div class="search-wrap">
+          ${PICKER_ICONS.search}
+          <input type="text" class="input" data-pk="search" placeholder="Search batches…" aria-label="Search batches" style="height:36px" autocomplete="off">
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" data-pk="all">Select all</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-pk="none">Clear</button>
+      </div>
+      <div class="batch-picker-list" data-pk="list">
+        ${sorted.length ? sorted.map(b => `
+          <label class="batch-picker-item ${sel.has(b) ? 'sel' : ''}">
+            <input type="checkbox" value="${escapeHtml(b)}" ${sel.has(b) ? 'checked' : ''}>
+            <span class="checkbox-box">${Icon('check', 12)}</span>
+            <span class="batch-picker-name">${escapeHtml(b)}</span>
+          </label>
+        `).join('') : `<span class="xs muted" style="padding:14px">No batches yet — import students to create batches.</span>`}
+      </div>
+      ${hint ? `<p class="hint" style="margin-top:8px">${hint}</p>` : ''}
+    </div>
+  `;
+}
+
+// Wires the picker: reads the current selection into `onChange(selectedArray)`.
+export function bindBatchPicker(root, { onSelected } = {}) {
+  const search = root.querySelector('[data-pk="search"]');
+  const list = root.querySelector('[data-pk="list"]');
+  const countEl = root.querySelector('[data-pk="count"]');
+  const allBtn = root.querySelector('[data-pk="all"]');
+  const noneBtn = root.querySelector('[data-pk="none"]');
+  if (!list) return;
+  const items = Array.from(list.querySelectorAll('.batch-picker-item'));
+  const total = items.length;
+
+  const read = () => items
+    .filter(i => i.querySelector('input').checked)
+    .map(i => i.querySelector('input').value);
+  const update = () => {
+    const picked = new Set(read());
+    if (countEl && total) countEl.textContent = `${picked.size} of ${total} selected`;
+    items.forEach(i => i.classList.toggle('sel', picked.has(i.querySelector('input').value)));
+  };
+
+  if (search) search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    items.forEach(i => {
+      const name = i.querySelector('.batch-picker-name').textContent.toLowerCase();
+      i.style.display = !q || name.includes(q) ? '' : 'none';
+    });
+  });
+  allBtn?.addEventListener('click', () => { items.forEach(i => { i.querySelector('input').checked = true; }); update(); onSelected?.(read()); });
+  noneBtn?.addEventListener('click', () => { items.forEach(i => { i.querySelector('input').checked = false; }); update(); onSelected?.(read()); });
+  items.forEach(i => i.querySelector('input').addEventListener('change', () => { update(); onSelected?.(read()); }));
+  update();
+  onSelected?.(read());
+}

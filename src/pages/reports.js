@@ -278,9 +278,9 @@ function renderStudentGroups(container, rows, batch, term) {
 
 function exportExcel(kind, rows, quizTitle) {
   const filename = `report_${kind}_${(quizTitle || '').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') || 'quiz'}_${Date.now()}.xlsx`;
-  let data;
+  const wb = XLSX.utils.book_new();
   if (kind === 'batch') {
-    data = rows.map(b => ({
+    const data = rows.map(b => ({
       'Batch': b.batch || 'Unassigned',
       'Total Students': b.totalStudents,
       'Attempted': b.attempted,
@@ -290,21 +290,57 @@ function exportExcel(kind, rows, quizTitle) {
       'Max %': b.maxPercent,
       'Min %': b.minPercent
     }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, 'Batch Report');
   } else {
-    data = rows.map(s => ({
-      'Name': s.name,
-      'User ID': s.userId,
-      'Batch': s.classSection,
-      'Attempted': s.attempted ? 'Yes' : 'No',
-      'Score': s.score ?? '',
-      'Percentage': s.percent != null ? `${s.percent}%` : '',
-      'Passed': s.passed ? 'Yes' : 'No',
-      'Time Taken': s.attempted ? formatTime(s.timeTaken) : ''
-    }));
+    XLSX.utils.book_append_sheet(wb, exportStudentSheet(rows), 'Student Report');
   }
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, kind === 'batch' ? 'Batch Report' : 'Student Report');
   XLSX.writeFile(wb, filename);
   showToast('Report exported as Excel');
+}
+
+function exportStudentSheet(rows) {
+  const headers = ['Name', 'User ID', 'Batch', 'Attempted', 'Score', 'Percentage', 'Passed', 'Time Taken'];
+  const groupKeys = sortBatches(Array.from(new Set(rows.map(s => s.classSection || ''))));
+  const aoa = [];
+  const sectionRows = [];
+  const headerRows = [];
+
+  groupKeys.forEach(batch => {
+    const group = rows.filter(s => (s.classSection || '') === batch);
+    sectionRows.push(aoa.length);
+    aoa.push([`${batch || 'Unassigned'} — ${group.length} student${group.length === 1 ? '' : 's'}`]);
+    headerRows.push(aoa.length);
+    aoa.push(headers);
+    group.forEach(s => aoa.push([
+      s.name,
+      s.userId,
+      s.classSection,
+      s.attempted ? 'Yes' : 'No',
+      s.attempted ? `${s.score}/${s.totalPoints}` : '',
+      s.percent != null ? `${s.percent}%` : '',
+      s.passed ? 'Yes' : 'No',
+      s.attempted ? formatTime(s.timeTaken) : ''
+    ]));
+    aoa.push([]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [
+    { wch: 26 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }
+  ];
+  sectionRows.forEach(ri => styleSheetRow(ws, ri, { bold: true, fill: 'EEF0FF', color: '3B3FE0' }));
+  headerRows.forEach(ri => styleSheetRow(ws, ri, { bold: true, fill: 'F1F5F9' }));
+  return ws;
+}
+
+function styleSheetRow(ws, r, { bold, fill, color }) {
+  for (let c = 0; c < 8; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r, c })];
+    if (!cell) continue;
+    cell.s = {
+      font: { bold, color: { rgb: color || '1E293B' } },
+      fill: fill ? { fgColor: { rgb: fill } } : undefined
+    };
+  }
 }

@@ -1,7 +1,7 @@
 import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches } from '../store.js';
 import { Icon, Badge, Field, Inp, Txta, Sel, Toggle, EmptyState } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
-import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar, renderAccessDenied } from '../utils.js';
+import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar, renderAccessDenied, batchPickerHTML, bindBatchPicker } from '../utils.js';
 
 let currentQuiz = null;
 let activeTab = 'index';       // index | questions | evaluation | certificate | publishing
@@ -689,23 +689,16 @@ async function bindBatches(app) {
   let batches = [];
   try { batches = await getBatches(); } catch { /* ignore */ }
   currentQuiz.allowedBatches = Array.isArray(currentQuiz.allowedBatches) ? currentQuiz.allowedBatches : [];
-  container.innerHTML = batches.length
-    ? batches.map(b => {
-        const on = currentQuiz.allowedBatches.includes(b);
-        return `<button type="button" class="chip ${on ? 'chip-on' : ''}" data-batch="${escapeHtml(b)}">${on ? Icon('check', 13) : ''}<span>${escapeHtml(b)}</span></button>`;
-      }).join('')
-    : `<p class="hint" style="margin:0">No Class-Sections found in the Students Master yet. Add students first.</p>`;
-  container.querySelectorAll('.chip').forEach(c => {
-    c.addEventListener('click', () => {
-      const batch = c.dataset.batch;
-      if (currentQuiz.allowedBatches.includes(batch)) {
-        currentQuiz.allowedBatches = currentQuiz.allowedBatches.filter(x => x !== batch);
-      } else {
-        currentQuiz.allowedBatches.push(batch);
-      }
-      c.classList.toggle('chip-on');
-      markDirty();
-    });
+  container.innerHTML = batchPickerHTML({
+    id: 'quiz-batch-picker',
+    label: 'Allow only these Class-Sections',
+    hint: 'Leave all off to allow every batch. Choose specific Class-Sections to restrict who can attempt.',
+    selected: currentQuiz.allowedBatches,
+    batches
+  });
+  const picker = container.querySelector('#quiz-batch-picker');
+  if (picker) bindBatchPicker(picker, {
+    onSelected: (sel) => { currentQuiz.allowedBatches = sel; markDirty(); }
   });
 }
 
