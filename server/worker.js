@@ -6,8 +6,8 @@
 // job into a free concurrency slot, which is what produces backpressure instead
 // of an unbounded soffice spawn storm.
 
+import 'dotenv/config';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { Worker } from 'bullmq';
 import { createPool, initDb } from './db.js';
 import { config } from './config.js';
