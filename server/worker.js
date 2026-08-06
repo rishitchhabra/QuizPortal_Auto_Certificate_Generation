@@ -12,6 +12,7 @@ import { Worker } from 'bullmq';
 import { createPool, initDb } from './db.js';
 import { config } from './config.js';
 import { generateCertificate } from './certificate.js';
+import { probeSoffice } from './libreoffice.js';
 import { updateJob } from './jobs.js';
 import * as jobsApi from './jobs.js';
 import { ensureStorageDir, sweepStaleFiles } from './storage.js';
@@ -68,6 +69,14 @@ async function processCertificateJob(job) {
 async function main() {
   await initDb(pool);
   await ensureStorageDir();
+
+  const sofficeProbe = await probeSoffice();
+  if (!sofficeProbe.ok) {
+    console.error('[worker] WARNING: no working soffice/libreoffice binary found. ' +
+      'Certificate jobs will FAIL until LibreOffice is installed (e.g. `apt install libreoffice --no-install-recommends`) or SOFFICE_PATH is set.');
+  } else {
+    console.log(`[worker] LibreOffice OK via "${sofficeProbe.binary}"`);
+  }
 
   worker = new Worker(config.certificateQueueName, processCertificateJob, {
     concurrency: config.workerConcurrency,
