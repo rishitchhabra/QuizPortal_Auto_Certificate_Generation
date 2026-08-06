@@ -36,6 +36,10 @@ export const config = {
   sofficePath: process.env.SOFFICE_PATH || undefined,
   sofficeTimeoutMs: parseInt(process.env.SOFFICE_TIMEOUT_MS || '60000', 10),
 
+  // On-screen preview PNG scale (2x = ~2560px wide for a 16:9 slide). Higher = crisper
+  // on retina/high-DPI screens, larger transient files.
+  previewScale: parseInt(process.env.PREVIEW_SCALE || '2', 10),
+
   // Transient certificate storage. PDFs + preview PNGs live here ONLY while the
   // download/preview window is open; files and DB rows are removed after the
   // client downloads or after they age out of STORAGE_TTL_MS.

@@ -14,7 +14,7 @@ import Docxtemplater from 'docxtemplater';
 import crypto from 'crypto';
 import { sofficeConvert } from './libreoffice.js';
 import { pdfPath, pngPath, exists, remove } from './storage.js';
-import { TMP_DIR } from './config.js';
+import { config, TMP_DIR } from './config.js';
 
 // Replace {{name}}, {{quiz_title}}, {{score}}, ... in the PPTX template and write
 // the modified copy to a unique tmp path. Returns { tmpPptxPath }.
@@ -68,10 +68,17 @@ export async function generateCertificate({ pptxPath, data, jobId }) {
     }
     await fsp.rename(pdfFiles[0], pdfPath(jobId));
 
-    // Preview PNG of slide 1 (best-effort — preview failures must not fail the job)
+    // Preview PNG of slide 1 (best-effort — preview failures must not fail the job).
+    // Rendered at previewScale for crisp on-screen quality; if the impress_png_Export
+    // filter is unsupported by this LibreOffice build, retry with plain PNG export.
     try {
       pngOutDir = path.join(TMP_DIR, `certpng_${crypto.randomBytes(4).toString('hex')}`);
-      const pngFiles = await sofficeConvert({ inputPath: p, outputDir: pngOutDir, convertTo: 'png' });
+      const s = config.previewScale;
+      const filter = `impress_png_Export:{"ScaleXNumerator":{"type":"long","value":"${s}"},"ScaleXDenominator":{"type":"long","value":"1"},"ScaleYNumerator":{"type":"long","value":"${s}"},"ScaleYDenominator":{"type":"long","value":"1"}}`;
+      let pngFiles = await sofficeConvert({ inputPath: p, outputDir: pngOutDir, convertTo: 'png', exportFilter: filter });
+      if (!pngFiles.length) {
+        pngFiles = await sofficeConvert({ inputPath: p, outputDir: pngOutDir, convertTo: 'png' });
+      }
       const firstSlide = pickFirstSlidePng(pngFiles);
       if (firstSlide) await fsp.rename(firstSlide, pngPath(jobId));
     } catch {

@@ -75,6 +75,10 @@ async function main() {
     console.error('[worker] WARNING: no working soffice/libreoffice binary found. ' +
       'Certificate jobs will FAIL until LibreOffice is installed (e.g. `apt install libreoffice --no-install-recommends`) or SOFFICE_PATH is set.');
   } else {
+    // Pin the resolved binary so every conversion uses exactly the one the probe
+    // verified — no per-job PATH scanning, and no misleading ENOENT logs for
+    // candidates that simply aren't installed.
+    config.sofficePath = sofficeProbe.binary;
     console.log(`[worker] LibreOffice OK via "${sofficeProbe.binary}"`);
   }
 

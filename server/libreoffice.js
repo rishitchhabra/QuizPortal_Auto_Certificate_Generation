@@ -50,7 +50,9 @@ export async function probeSoffice() {
 // Run a single soffice conversion. Returns the output file path(s) globbed from
 // outputDir, or throws. Tries each candidate binary in order (mirrors the old
 // libreoffice -> soffice -> mac path fallback). Never leaves a process behind.
-export async function sofficeConvert({ inputPath, outputDir, convertTo }) {
+// `exportFilter` (optional) appends LibreOffice graphic-export filter options,
+// e.g. 'impress_png_Export:{"ScaleXNumerator":{...}}' for high-res preview PNGs.
+export async function sofficeConvert({ inputPath, outputDir, convertTo, exportFilter }) {
   await fsp.mkdir(outputDir, { recursive: true });
 
   // Unique profile per conversion (see header comment). Parent dir is per-process
@@ -58,12 +60,13 @@ export async function sofficeConvert({ inputPath, outputDir, convertTo }) {
   const profileDir = path.join(config.loProfileDir, crypto.randomBytes(6).toString('hex'));
   await fsp.mkdir(profileDir, { recursive: true });
 
+  const target = exportFilter ? `${convertTo}:${exportFilter}` : convertTo;
   const args = [
     '--headless',
     '--norestore',
     '--nolockcheck',
     `-env:UserInstallation=file://${profileDir}`,
-    '--convert-to', convertTo,
+    '--convert-to', target,
     '--outdir', outputDir,
     inputPath
   ];
@@ -85,9 +88,24 @@ export async function sofficeConvert({ inputPath, outputDir, convertTo }) {
     }
     throw lastError || new Error('LibreOffice conversion failed');
   } finally {
+    // Kill any soffice.bin child that escaped the process-group kill and is still
+    // alive holding this profile. Without this, a timed-out conversion leaves an
+    // orphaned soffice.bin spinning at 100% CPU forever (the profile path is in its
+    // command line, so pkill -f is exact and cannot touch other jobs' processes).
+    await killByProfile(profileDir);
     // Best-effort cleanup of the throwaway profile.
     try { await fsp.rm(profileDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
+}
+
+// pkill -9 -f <profileDir> catches any lingering soffice.bin that references this
+// conversion's unique profile. pkill never matches its own process.
+function killByProfile(profileDir) {
+  return new Promise((resolve) => {
+    const child = spawn('pkill', ['-9', '-f', profileDir], { stdio: 'ignore' });
+    child.on('error', () => resolve());
+    child.on('exit', () => resolve());
+  });
 }
 
 // spawn detached + kill entire process group on timeout. execFile's built-in
