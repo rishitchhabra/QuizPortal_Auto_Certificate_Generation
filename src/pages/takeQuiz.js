@@ -1,4 +1,4 @@
-import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getSubmissionsByUserId, getGoogleUser, generateCertificatePdf, verifyUserId } from '../store.js';
+import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getSubmissionsByUserId, getGoogleUser, createCertificateJob, getCertificateStatus, certificateUrl, verifyUserId } from '../store.js';
 import { renderNavbar, showToast, formatTime, shuffleArray, showModal, escapeHtml, bindNavbar, subjectFor, burstConfetti } from '../utils.js';
 import { initGoogleAuth, renderGoogleButton, getGoogleClientId } from '../auth.js';
 import { Icon, Badge } from '../components.js';
@@ -880,21 +880,15 @@ async function downloadCertPDF() {
   }
 }
 
-let cachedCertBlob = null;
-let cachedCertFilename = null;
+let cachedCert = null; // { downloadUrl, filename, blob? }
 
-function base64ToBlob(b64, type) {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type });
-}
-
+// Enqueue the certificate job, poll until it is generated (or fails), then build
+// the results panel. PDF + preview are streamed from the server (no base64).
 async function buildPptxCert(submission, template) {
   const pName = submission.participant?.name || participant.name || 'Participant';
   const dateStr = new Date(submission.submittedAt || Date.now()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  const response = await generateCertificatePdf(template.id, {
+  const { jobId } = await createCertificateJob(template.id, {
     name: pName,
     quiz_title: quiz?.title || 'Evaluation',
     score: String(submission.score ?? 0),
@@ -905,39 +899,38 @@ async function buildPptxCert(submission, template) {
     org: submission.participant?.org || participant.org || ''
   });
 
-  let ext, certBlob, previewBase64 = null, filename;
-  if (response._json) {
-    // New server returns { ext, filename, pdf|pptx, preview (PNG base64) }
-    ext = response.ext;
-    filename = response.filename || `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
-    previewBase64 = response.preview || null;
-    const b64 = ext === 'pdf' ? response.pdf : response.pptx;
-    certBlob = b64 ? base64ToBlob(b64, ext === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.presentationml.presentation') : null;
-  } else {
-    // Legacy server: binary response
-    certBlob = await response.blob();
-    const contentType = response.headers.get('Content-Type') || '';
-    ext = contentType.includes('pdf') ? 'pdf' : 'pptx';
-    filename = `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.${ext}`;
+  // Poll for completion. The results skeleton is shown meanwhile; the panel only
+  // swaps in once the certificate is ready (same UX as before).
+  const deadline = Date.now() + 60000;
+  let status;
+  while (true) {
+    status = await getCertificateStatus(jobId);
+    if (status.status === 'done' || status.status === 'failed') break;
+    if (Date.now() > deadline) throw new Error('Certificate generation timed out');
+    await new Promise((r) => setTimeout(r, 1500));
   }
-  cachedCertBlob = certBlob;
-  cachedCertFilename = filename;
+
+  if (status.status === 'failed') {
+    throw new Error(status.error || 'Certificate generation failed');
+  }
+
+  const downloadUrl = certificateUrl(status.downloadUrl);
+  const previewUrl = certificateUrl(status.previewUrl);
+  const filename = status.filename || `Certificate_${pName.replace(/[^a-zA-Z0-9 ]/g, '')}.pdf`;
+  cachedCert = { downloadUrl, filename };
 
   const wrapOpen = `<div style="width:100%; max-width:900px; margin:0 auto; overflow:hidden; border-radius:var(--r-md); box-shadow:var(--shadow-lg)">`;
-  if (previewBase64) {
-    // PNG preview works on every device (no PDF.js required)
-    return { ext, blob: certBlob, filename, html: `${wrapOpen}<img src="data:image/png;base64,${previewBase64}" style="width:100%; height:auto; display:block; background:#fff"></div>` };
+
+  if (previewUrl) {
+    // PNG preview works on every device (no PDF.js required).
+    return { ext: 'pdf', previewUrl, needPdfJs: false, html: `${wrapOpen}<img src="${previewUrl}" alt="Certificate preview" style="width:100%; height:auto; display:block; background:#fff"></div>` };
   }
-  if (ext === 'pdf') {
-    // Legacy server without PNG preview: rendered in place with PDF.js after the page swaps in.
-    return { ext, blob: certBlob, filename, needPdfJs: true, html: `${wrapOpen}<canvas id="pdf-cert-canvas" style="width:100%; height:auto; display:block; background:#fff"></canvas></div>` };
-  }
-  return { ext, blob: certBlob, filename, html: `
-    <div style="padding:32px; text-align:center">
-      <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:10px">${Icon('award', 26, '')}</div>
-      <div style="font-weight:700; font-size:17px">Your personalized certificate is ready</div>
-      <div class="sm muted" style="margin-top:6px">Generated with your name, score (${submission.percent}%) and completion details.</div>
-    </div>` };
+
+  // No PNG preview: pull the PDF once, render it with PDF.js, and reuse the same
+  // bytes for the download button (the server deletes the file after streaming).
+  const blob = await (await fetch(downloadUrl)).blob();
+  cachedCert.blob = blob;
+  return { ext: 'pdf', needPdfJs: true, blob, html: `${wrapOpen}<canvas id="pdf-cert-canvas" style="width:100%; height:auto; display:block; background:#fff"></canvas></div>` };
 }
 
 function pptxCertPanelHtml(built, template) {
@@ -946,11 +939,8 @@ function pptxCertPanelHtml(built, template) {
       <div class="card cert-panel">
         <div class="flex items-center" style="justify-content:center; gap:10px; margin-bottom:4px">${Icon('award', 20, '')}</div>
         <h3 style="font-size:20px; font-weight:800">Your official certificate</h3>
-        <p class="muted sm" style="margin-top:4px">Certificates are ready to download.</p>
-        <div style="color:var(--red); font-size:13px; padding:16px">Could not load the live preview. Use the download button below to get your certificate.</div>
-        <div class="cert-toolbar">
-          <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate</span></button>
-        </div>
+        <p class="muted sm" style="margin-top:4px">Certificates are generated on-demand by our server.</p>
+        <div style="color:var(--red); font-size:13px; padding:16px">Could not generate the certificate right now. Please try again after a few minutes.</div>
       </div>`;
   }
   return `
@@ -960,31 +950,42 @@ function pptxCertPanelHtml(built, template) {
       <p class="muted sm" style="margin-top:4px">Generated from template: ${escapeHtml(template.name || 'Certificate')}</p>
       ${built.html}
       <div class="cert-toolbar">
-        <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate (${built.ext === 'pdf' ? 'PDF' : 'PPTX'})</span></button>
+        <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate (PDF)</span></button>
       </div>
     </div>`;
 }
 
 function downloadCachedCert() {
-  if (cachedCertBlob && cachedCertFilename) {
-    const url = URL.createObjectURL(cachedCertBlob);
+  if (cachedCert?.blob) {
+    const url = URL.createObjectURL(cachedCert.blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = cachedCertFilename;
+    a.download = cachedCert.filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     showToast('Certificate downloaded');
+  } else if (cachedCert?.downloadUrl) {
+    // Direct streaming download from the server.
+    const a = document.createElement('a');
+    a.href = cachedCert.downloadUrl;
+    a.download = cachedCert.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('Certificate download started');
   }
 }
 
-// Legacy fallback: render the PDF preview onto the canvas with PDF.js after the page is in the DOM.
+// Fallback: render the PDF preview onto the canvas with PDF.js after the page is
+// in the DOM. Uses the cached blob from the no-PNG-preview path.
 async function renderPdfCertPreview() {
   const canvas = document.getElementById('pdf-cert-canvas');
-  if (!canvas || !cachedCertBlob) return;
+  if (!canvas || !cachedCert?.blob) return;
   const wrap = canvas.closest('div');
   try {
-    const arrayBuffer = await cachedCertBlob.arrayBuffer();
+    const arrayBuffer = await cachedCert.blob.arrayBuffer();
     const pdfjsLib = await import('pdfjs-dist');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.0.379'}/pdf.worker.min.mjs`;
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -996,8 +997,8 @@ async function renderPdfCertPreview() {
     await page.render({ canvasContext: ctx, viewport }).promise;
   } catch (pdfErr) {
     console.warn('PDF.js render fallback:', pdfErr);
-    if (wrap && cachedCertBlob) {
-      const blobUrl = URL.createObjectURL(cachedCertBlob);
+    if (wrap && cachedCert.blob) {
+      const blobUrl = URL.createObjectURL(cachedCert.blob);
       wrap.innerHTML = `<object data="${blobUrl}" type="application/pdf" style="width:100%; aspect-ratio:900/636; border:none; display:block"></object>`;
     }
   }

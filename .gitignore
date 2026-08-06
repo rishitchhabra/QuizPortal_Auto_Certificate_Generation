@@ -14,6 +14,7 @@ dist-ssr
 .env
 uploads/
 tmp/
+storage/
 
 # Editor directories and files
 .vscode/*

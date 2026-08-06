@@ -109,8 +109,10 @@ export async function uploadPptxTemplate(file, name, id) {
   return response.json();
 }
 
-// Generate certificate PDF from PPTX template (server-side rendering)
-export async function generateCertificatePdf(templateId, data) {
+// Enqueue a certificate generation. Returns { success, jobId, status: 'queued' }
+// immediately (HTTP 202); the server generates the PDF in a background worker.
+// Poll getCertificateStatus(jobId) until status is 'done', then use downloadUrl.
+export async function createCertificateJob(templateId, data) {
   const response = await fetch(`${SERVER_BASE}/api/generate-certificate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -121,13 +123,24 @@ export async function generateCertificatePdf(templateId, data) {
     try { const body = await response.json(); message = body.error || message; } catch {}
     throw new Error(message);
   }
-  const contentType = response.headers.get('Content-Type') || '';
-  // New server returns JSON with base64 pdf/pptx + PNG preview; legacy returns binary blob.
-  if (contentType.includes('application/json')) {
-    const body = await response.json();
-    return { ...body, _json: true };
+  return response.json();
+}
+
+// Poll status: { success, jobId, status: queued|processing|done|failed, downloadUrl?, previewUrl? }
+export async function getCertificateStatus(jobId) {
+  const response = await fetch(`${SERVER_BASE}/api/certificate-status/${jobId}`);
+  if (!response.ok) {
+    let message = response.statusText;
+    try { const body = await response.json(); message = body.error || message; } catch {}
+    throw new Error(message);
   }
-  return response; // Return raw response for blob download
+  return response.json();
+}
+
+// Returns the absolute streaming URL for a certificate download/preview.
+export function certificateUrl(path) {
+  if (!path) return null;
+  return `${SERVER_BASE}${path}`;
 }
 
 // Admin Config

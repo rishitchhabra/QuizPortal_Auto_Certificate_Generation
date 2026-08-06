@@ -3,25 +3,18 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { Pool } from 'pg';
 import basicAuth from 'express-basic-auth';
 import multer from 'multer';
 import PizZip from 'pizzip';
 import * as XLSX from 'xlsx';
-import Docxtemplater from 'docxtemplater';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { createPool, initDb } from './server/db.js';
+import { enqueueCertificateJob } from './server/queue.js';
+import * as jobsApi from './server/jobs.js';
+import { createFileStream, sizeOf, remove } from './server/storage.js';
+import { config } from './server/config.js';
 
-const execP = promisify(exec);
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const PORT = process.env.PORT || 3001;
-const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/certificate';
-const DB_SSL = process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false;
+const PORT = config.port;
 
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'admin';
@@ -50,46 +43,9 @@ const pptxUpload = multer({
   }
 });
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: DB_SSL,
-  max: parseInt(process.env.PG_POOL_MAX || '20', 10),
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000
-});
-pool.on('error', (err) => {
-  console.error('Unexpected PostgreSQL pool error:', err.message);
-});
+const pool = createPool();
 
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
-
-// Bounded concurrency for LibreOffice certificate rendering. launching many soffice
-// processes at once (e.g. hundreds of students passing simultaneously) would starve the
-// server of CPU/RAM, so conversions run through a FIFO queue with a small concurrency cap.
-const SOFFICE_CONCURRENCY = parseInt(process.env.SOFFICE_CONCURRENCY || '2', 10) || 2;
-let sofficeRunning = 0;
-const sofficeWaiters = [];
-
-async function withSofficeLock() {
-  while (sofficeRunning >= SOFFICE_CONCURRENCY) {
-    await new Promise((resolve) => sofficeWaiters.push(resolve));
-  }
-  sofficeRunning++;
-  return () => {
-    sofficeRunning--;
-    const next = sofficeWaiters.shift();
-    if (next) next();
-  };
-}
-
-async function sofficeConvert(cmd, args) {
-  const release = await withSofficeLock();
-  try {
-    await execP(`"${cmd}" --headless ${args}`, { timeout: 60000, maxBuffer: 64 * 1024 * 1024 });
-  } finally {
-    release();
-  }
-}
 
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -133,97 +89,6 @@ function normalizeColumnType(type) {
     throw error;
   }
   return allowed.get(normalized);
-}
-
-async function initDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS quizzes (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL DEFAULT '',
-      description TEXT NOT NULL DEFAULT '',
-      data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      is_published BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS submissions (
-      id TEXT PRIMARY KEY,
-      quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-      participant JSONB NOT NULL DEFAULT '{}'::jsonb,
-      answers JSONB NOT NULL DEFAULT '{}'::jsonb,
-      score INTEGER NOT NULL DEFAULT 0,
-      total_points INTEGER NOT NULL DEFAULT 0,
-      percent INTEGER NOT NULL DEFAULT 0,
-      passed BOOLEAN NOT NULL DEFAULT false,
-      time_taken INTEGER NOT NULL DEFAULT 0,
-      question_results JSONB NOT NULL DEFAULT '[]'::jsonb,
-      submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS cert_templates (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS admin_config (
-      id TEXT PRIMARY KEY,
-      password_hash TEXT NOT NULL DEFAULT '',
-      admin_emails JSONB NOT NULL DEFAULT '[]'::jsonb,
-      google_client_id TEXT NOT NULL DEFAULT '',
-      is_setup BOOLEAN NOT NULL DEFAULT false,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  // Student master database
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      user_id TEXT NOT NULL UNIQUE,
-      class_section TEXT NOT NULL DEFAULT '',
-      parent_mobile TEXT NOT NULL DEFAULT '',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  // Staff / teacher accounts with role-based permissions
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS staff (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      user_id TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL DEFAULT '',
-      permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
-      assigned_batches JSONB NOT NULL DEFAULT '[]'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-
-  // Server-side auth sessions (tokens)
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      type TEXT NOT NULL DEFAULT 'admin',
-      staff_id TEXT,
-      admin_id TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      expires_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days'
-    );
-  `);
-
-  await pool.query('CREATE INDEX IF NOT EXISTS submissions_quiz_id_idx ON submissions(quiz_id);');
-  await migrateLegacyJson();
 }
 
 async function migrateLegacyJson() {
@@ -1113,7 +978,8 @@ app.post('/api/cert-templates/upload-pptx', pptxUpload.single('pptx'), asyncHand
   res.json({ ok: true, id: templateId, name: templateName, type: 'pptx' });
 }));
 
-// Generate a certificate from a PPTX template (replace placeholders -> return PDF or PPTX)
+// Enqueue a certificate generation. Returns 202 + jobId immediately; the worker
+// renders the PDF asynchronously and the client polls GET /api/certificate-status/:jobId.
 app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
   const { templateId, data } = req.body;
   if (!templateId) return res.status(400).json({ error: 'templateId required' });
@@ -1131,95 +997,86 @@ app.post('/api/generate-certificate', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'PPTX file not found on server' });
   }
 
-  // Read PPTX and replace placeholders
-  const pptxBuffer = fs.readFileSync(pptxPath);
-  const zip = new PizZip(pptxBuffer);
-  const doc = new Docxtemplater(zip, {
-    paragraphLoop: true,
-    linebreaks: true,
-    delimiters: { start: '{{', end: '}}' }
-  });
-
-  const templateData = {
-    name: data?.name || 'Participant',
-    quiz_title: data?.quiz_title || 'Evaluation',
-    score: String(data?.score ?? '0'),
-    total: String(data?.total ?? '0'),
-    percent: String(data?.percent ?? '0%'),
-    date: data?.date || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-    email: data?.email || '',
-    org: data?.org || ''
-  };
-
-  doc.render(templateData);
-  const modifiedBuffer = doc.getZip().generate({ type: 'nodebuffer' });
-
-  // Write modified PPTX to tmp
-  const tmpPptx = path.join(TMP_DIR, `cert_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pptx`);
-  fs.writeFileSync(tmpPptx, modifiedBuffer);
-
-  const cleanName = (data?.name || 'Participant').replace(/[^a-zA-Z0-9 ]/g, '');
-
-  // Try LibreOffice / soffice conversion to PDF across Linux / macOS.
-  // Uses async exec (never blocks the event loop) gated behind a bounded queue so
-  // hundreds of simultaneous conversions don't starve the server.
-  const cmds = [
-    'libreoffice',
-    'soffice',
-    '/Applications/LibreOffice.app/Contents/MacOS/soffice'
-  ];
-
-  // Render the first slide to a PNG (base64) so the on-screen preview works on ALL
-  // devices without relying on client-side PDF.js, which fails silently on some phones.
-  const renderPreviewPng = async (cmd, outDir) => {
-    try {
-      fs.mkdirSync(outDir, { recursive: true });
-      await sofficeConvert(cmd, `--convert-to png --outdir "${outDir}" "${tmpPptx}"`);
-      const files = fs.readdirSync(outDir).filter((f) => /\.png$/i.test(f));
-      if (files.length) {
-        files.sort((a, b) => {
-          const na = parseInt((a.match(/-(\d+)\.png$/i) || [])[1] || '0', 10);
-          const nb = parseInt((b.match(/-(\d+)\.png$/i) || [])[1] || '0', 10);
-          return na - nb;
-        });
-        return fs.readFileSync(path.join(outDir, files[0])).toString('base64');
-      }
-    } catch { }
-    return null;
-  };
-
-  for (const cmd of cmds) {
-    try {
-      await sofficeConvert(cmd, `--convert-to pdf --outdir "${TMP_DIR}" "${tmpPptx}"`);
-      const pdfPath = tmpPptx.replace('.pptx', '.pdf');
-
-      if (fs.existsSync(pdfPath)) {
-        const pdfBuffer = fs.readFileSync(pdfPath);
-        const pngDir = path.join(TMP_DIR, `certpng_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
-        const preview = await renderPreviewPng(cmd, pngDir);
-        try { fs.rmSync(pngDir, { recursive: true, force: true }); } catch { }
-
-        res.json({ ok: true, ext: 'pdf', filename: `Certificate_${cleanName}.pdf`, pdf: pdfBuffer.toString('base64'), preview });
-
-        // Cleanup tmp files
-        try { fs.unlinkSync(tmpPptx); } catch { }
-        try { fs.unlinkSync(pdfPath); } catch { }
-        return;
-      }
-    } catch { }
+  const jobId = generateId();
+  await jobsApi.createJob({ jobId, templateId, data });
+  try {
+    await enqueueCertificateJob({ jobId, templateId, data });
+  } catch (err) {
+    // Redis/queue unavailable — record the failure so status polling reports it
+    // instead of leaving a queued job that will never run.
+    await jobsApi.updateJob(jobId, { status: 'failed', error: 'Queue unavailable: ' + (err.message || 'unknown') });
+    throw err;
   }
 
-  // Fallback: return modified PPTX if LibreOffice not installed
-  res.json({
-    ok: true,
-    ext: 'pptx',
-    filename: `Certificate_${cleanName}.pptx`,
-    pptx: modifiedBuffer.toString('base64'),
-    preview: null
-  });
+  res.status(202).json({ success: true, jobId, status: 'queued' });
+}));
 
-  // Cleanup tmp
-  try { fs.unlinkSync(tmpPptx); } catch { }
+// Polled by the client. Returns the current lifecycle status; when done, includes
+// downloadUrl + previewUrl for streaming (no base64 payloads).
+app.get('/api/certificate-status/:jobId', asyncHandler(async (req, res) => {
+  const row = await jobsApi.getJob(req.params.jobId);
+  if (!row) return res.status(404).json({ success: false, error: 'Job not found' });
+
+  const status = row.status;
+  const payload = { success: true, jobId: row.job_id, status };
+
+  if (status === 'done') {
+    payload.filename = row.filename || 'Certificate.pdf';
+    payload.downloadUrl = `/api/download-certificate/${row.job_id}`;
+    if (row.preview_path) payload.previewUrl = `/api/certificate-preview/${row.job_id}`;
+  } else if (status === 'failed') {
+    payload.error = row.error || 'Certificate generation failed';
+  }
+  res.json(payload);
+}));
+
+// Stream the generated PDF to the client, then remove the file + DB row so no
+// certificate persists on disk. createReadStream keeps memory flat for large PDFs.
+app.get('/api/download-certificate/:jobId', asyncHandler(async (req, res) => {
+  const row = await jobsApi.getJob(req.params.jobId);
+  if (!row || row.status !== 'done' || !row.certificate_path) {
+    return res.status(404).json({ success: false, error: 'Certificate not found or not ready yet' });
+  }
+
+  const stream = createFileStream(row.certificate_path);
+  if (!stream) {
+    await jobsApi.deleteJob(row.job_id);
+    return res.status(410).json({ success: false, error: 'Certificate file has expired' });
+  }
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${row.filename || 'Certificate.pdf'}"`);
+  res.setHeader('Content-Length', await sizeOf(row.certificate_path));
+
+  // Delete the transient file + row once the stream has flushed (or the client
+  // disconnected), guaranteeing nothing is permanently stored.
+  const cleanup = () => {
+    remove(row.certificate_path);
+    remove(row.preview_path);
+    jobsApi.deleteJob(row.job_id);
+  };
+  res.on('close', cleanup);
+  stream.on('error', () => { cleanup(); res.status(500).end(); });
+  stream.pipe(res);
+}));
+
+// Stream the first-slide preview PNG (used by the <img> in the results panel).
+app.get('/api/certificate-preview/:jobId', asyncHandler(async (req, res) => {
+  const row = await jobsApi.getJob(req.params.jobId);
+  if (!row || !row.preview_path) {
+    return res.status(404).json({ success: false, error: 'Preview not available' });
+  }
+
+  const stream = createFileStream(row.preview_path);
+  if (!stream) {
+    return res.status(410).json({ success: false, error: 'Preview has expired' });
+  }
+
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'private, max-age=60');
+  res.setHeader('Content-Length', await sizeOf(row.preview_path));
+  stream.on('error', () => res.status(500).end());
+  stream.pipe(res);
 }));
 
 app.get('/api/tables', asyncHandler(async (req, res) => {
@@ -1319,7 +1176,8 @@ app.use((error, req, res, next) => {
   res.status(error.statusCode || 500).json({ error: error.message || 'Server error' });
 });
 
-initDb()
+initDb(pool)
+  .then(() => migrateLegacyJson())
   .then(() => {
     app.listen(PORT, () => console.log(`PostgreSQL server listening on port ${PORT}`));
   })
