@@ -371,6 +371,13 @@ async function renderParticipantForm(app) {
     quizStarted = true;
     timeLeft = (quiz.timerMinutes || 30) * 60;
     if (quiz.shuffleQuestions) quiz.questions = shuffleArray(quiz.questions);
+    if (quiz.shuffleOptions) {
+      quiz.questions.forEach(q => {
+        if (q.type === 'mcq' && Array.isArray(q.options)) {
+          q._shuffledIndices = shuffleArray(q.options.map((_, idx) => idx));
+        }
+      });
+    }
     renderContinuousQuizShell(app);
     startTimer();
   });
@@ -432,12 +439,15 @@ function renderContinuousQuizShell(app) {
                     <span class="opt-letter">${Icon('x', 16)}</span><span>False</span>
                     <span class="opt-check">${Icon('check-circle', 20)}</span>
                   </button>
-                ` : (q.options || []).map((opt, oi) => `
-                  <button class="quiz-option ${answers[i] === oi.toString() ? 'selected' : ''}" data-qi="${i}" data-answer="${oi}">
-                    <span class="opt-letter opt-letter-${(oi % 6) + 1}">${letters[oi]}</span><span>${escapeHtml(opt)}</span>
-                    <span class="opt-check">${Icon('check-circle', 20)}</span>
-                  </button>
-                `).join('')}
+                ` : ((q._shuffledIndices || (q.options || []).map((_, oi) => oi)).map((oi, displayIdx) => {
+                  const opt = q.options[oi];
+                  return `
+                    <button class="quiz-option ${answers[i] === oi.toString() ? 'selected' : ''}" data-qi="${i}" data-answer="${oi}">
+                      <span class="opt-letter opt-letter-${(displayIdx % 6) + 1}">${letters[displayIdx]}</span><span>${escapeHtml(opt)}</span>
+                      <span class="opt-check">${Icon('check-circle', 20)}</span>
+                    </button>
+                  `;
+                }).join(''))}
               </div>
             </section>
           `).join('')}

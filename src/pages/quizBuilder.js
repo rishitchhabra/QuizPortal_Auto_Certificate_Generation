@@ -268,11 +268,16 @@ function renderQItem(qq, i) {
   const text = (qq.text || '').trim() || 'Untitled question';
   const done = qItemState(qq) === 'done';
   return `
-    <button class="q-item ${activeQ === i ? 'active' : ''}" data-qi="${i}" aria-label="${done ? 'Question answered, click to edit' : 'Answer not set, click to edit'}">
+    <button class="q-item ${activeQ === i ? 'active' : ''} ${!done ? 'q-item-unmarked' : ''}" data-qi="${i}" aria-label="${done ? 'Question answered, click to edit' : 'Answer not set, click to edit'}">
       <span class="q-index">${i + 1}</span>
       <span class="q-item-copy">
         <span class="q-item-text">${escapeHtml(text)}</span>
-        <span class="q-item-meta">${done ? Icon('check-circle', 11, 'check-inline') : ''}<span>${done ? 'Answer set' : 'Answer not set'} · </span>${qq.type === 'tf' ? 'True / False' : 'MCQ'} · ${qq.points || 1} pt</span>
+        <span class="q-item-meta">
+          ${done 
+            ? `${Icon('check-circle', 11, 'check-inline')} <span style="color:var(--green)">Answer set</span>` 
+            : `${Icon('alert-circle', 11)} <span style="color:var(--red); font-weight:600">Answer not set</span>`
+          } · ${qq.type === 'tf' ? 'True / False' : 'MCQ'} · ${qq.points || 1} pt
+        </span>
       </span>
     </button>`;
 }
@@ -281,6 +286,8 @@ function renderQItem(qq, i) {
 function renderQuestionEditor(q, i) {
   const letters = 'ABCDEFGHIJ';
   const isReq = q.required !== false;
+  const isAnswerSet = qItemState(q) === 'done';
+
   return `
     <div class="q-editor-card">
       <div class="q-editor-top">
@@ -322,23 +329,47 @@ function renderQuestionEditor(q, i) {
 
         ${q.type === 'mcq' ? `
           <div style="margin-bottom:16px">
-            <label class="field-label">Options <span class="field-req">*</span></label>
-            <p class="field-hint" style="margin-bottom:12px">Select the correct answer using the radio button on the left.</p>
-            ${(q.options || []).map((opt, oi) => `
-              <div class="option-row" data-qi="${i}" data-oi="${oi}" role="presentation">
-                <span class="radio-field">
-                  <input type="radio" name="mcq-${i}" class="q-radio-mcq" data-qi="${i}" data-oi="${oi}" ${String(q.correctAnswer) === String(oi) ? 'checked' : ''} aria-label="Mark option ${letters[oi]} as correct">
-                  <span class="radio-custom" aria-hidden="true"></span>
-                </span>
-                <input type="text" class="input opt-text" data-qi="${i}" data-oi="${oi}" placeholder="Option ${letters[oi]}" value="${escapeHtml(opt)}" style="height:42px">
-                <button class="icon-btn icon-btn-secondary option-delete" data-qi="${i}" data-oi="${oi}" aria-label="Remove option" ${q.options.length <= 2 ? 'disabled' : ''}>${Icon('x', 15)}</button>
+            <div class="flex items-center justify-between" style="margin-bottom:6px">
+              <label class="field-label" style="margin-bottom:0">Options <span class="field-req">*</span></label>
+              ${isAnswerSet 
+                ? `<span class="badge badge-green" style="display:inline-flex; align-items:center; gap:4px; font-weight:600">${Icon('check-circle', 12)} Correct answer set</span>` 
+                : `<span class="badge badge-red" style="display:inline-flex; align-items:center; gap:4px; font-weight:700">${Icon('alert-circle', 12)} No correct answer marked</span>`
+              }
+            </div>
+            ${!isAnswerSet ? `
+              <div style="margin-bottom:12px; padding:10px 14px; border-radius:var(--r-sm); background:var(--red-soft, #fef2f2); border:1px solid var(--red, #ef4444); color:var(--red, #b91c1c); font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px">
+                ${Icon('alert-circle', 16)} Please mark the correct answer below using the radio button on the left.
               </div>
-            `).join('')}
+            ` : `<p class="field-hint" style="margin-bottom:12px">Select the correct answer using the radio button on the left.</p>`}
+            ${(q.options || []).map((opt, oi) => {
+              const isCorrect = String(q.correctAnswer) === String(oi);
+              return `
+                <div class="option-row ${isCorrect ? 'correct-option' : ''}" data-qi="${i}" data-oi="${oi}" role="presentation" style="${isCorrect ? 'border: 1px solid var(--green); border-radius: var(--r-sm); padding: 2px 6px; background: hsla(var(--green-hsl, 142, 70%, 45%), 0.05);' : ''}">
+                  <span class="radio-field">
+                    <input type="radio" name="mcq-${i}" class="q-radio-mcq" data-qi="${i}" data-oi="${oi}" ${isCorrect ? 'checked' : ''} aria-label="Mark option ${letters[oi]} as correct">
+                    <span class="radio-custom" aria-hidden="true"></span>
+                  </span>
+                  <input type="text" class="input opt-text" data-qi="${i}" data-oi="${oi}" placeholder="Option ${letters[oi]}" value="${escapeHtml(opt)}" style="height:42px">
+                  <button class="icon-btn icon-btn-secondary option-delete" data-qi="${i}" data-oi="${oi}" aria-label="Remove option" ${q.options.length <= 2 ? 'disabled' : ''}>${Icon('x', 15)}</button>
+                </div>
+              `;
+            }).join('')}
             <button class="btn btn-secondary btn-sm q-add-opt" data-qi="${i}" ${q.options?.length >= 8 ? 'disabled' : ''}>${Icon('plus', 14)}<span>Add option</span></button>
           </div>
         ` : `
           <div style="margin-bottom:20px">
-            <label class="field-label">Correct answer <span class="field-req">*</span></label>
+            <div class="flex items-center justify-between" style="margin-bottom:6px">
+              <label class="field-label" style="margin-bottom:0">Correct answer <span class="field-req">*</span></label>
+              ${isAnswerSet 
+                ? `<span class="badge badge-green" style="display:inline-flex; align-items:center; gap:4px; font-weight:600">${Icon('check-circle', 12)} Correct answer set</span>` 
+                : `<span class="badge badge-red" style="display:inline-flex; align-items:center; gap:4px; font-weight:700">${Icon('alert-circle', 12)} No correct answer marked</span>`
+              }
+            </div>
+            ${!isAnswerSet ? `
+              <div style="margin-bottom:12px; padding:10px 14px; border-radius:var(--r-sm); background:var(--red-soft, #fef2f2); border:1px solid var(--red, #ef4444); color:var(--red, #b91c1c); font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px">
+                ${Icon('alert-circle', 16)} Please select True or False as the correct answer.
+              </div>
+            ` : ''}
             <div class="flex wrap" style="gap:10px; margin-top:4px">
               ${[['true', 'True'], ['false', 'False']].map(([v, label]) => `
                 <label class="choice-card ${String(q.correctAnswer) === v ? 'checked' : ''}">
@@ -382,6 +413,7 @@ function renderEvaluationTab() {
         <div class="panel" style="display:flex; flex-direction:column">
           ${Toggle({ id: 'quiz-limit-user', checked: currentQuiz.limitPerUser, label: 'One response per Google account', hint: 'Prevents a student from submitting more than once.' })}
           ${Toggle({ id: 'quiz-shuffle', checked: currentQuiz.shuffleQuestions, label: 'Shuffle question order', hint: 'Present questions in a different order to each student.' })}
+          ${Toggle({ id: 'quiz-shuffle-options', checked: !!currentQuiz.shuffleOptions, label: 'Shuffle options order', hint: 'Randomize the order of answer choices (A, B, C, D) for each question.' })}
           ${Toggle({ id: 'quiz-show-summary', checked: currentQuiz.showSummary !== false, label: 'Show result summary', hint: 'Show score, time and pass status after submission.' })}
           ${Toggle({ id: 'quiz-show-answers', checked: currentQuiz.showCorrectAnswers !== false, label: 'Show correct answers', hint: 'Let students review correct answers after submitting.' })}
           <div class="info" style="margin-top:18px">
@@ -548,6 +580,7 @@ function bindEvents(app) {
   bindToggle(app, 'quiz-collect-org', 'collectOrg');
   bindToggle(app, 'quiz-limit-user', 'limitPerUser');
   bindToggle(app, 'quiz-shuffle', 'shuffleQuestions');
+  bindToggle(app, 'quiz-shuffle-options', 'shuffleOptions');
   bindToggle(app, 'quiz-show-summary', 'showSummary');
   bindToggle(app, 'quiz-show-answers', 'showCorrectAnswers');
 
