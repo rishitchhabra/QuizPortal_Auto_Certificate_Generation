@@ -48,13 +48,19 @@ export async function adminLogin(id, password) {
 // Teacher / Staff Login
 export async function teacherLogin(userId, password) {
   const hash = await hashPassword(password);
+  // Clear any existing session to prevent stale Bearer tokens from being sent
+  clearAuthSession();
   try {
     const r = await staffLogin(userId, hash);
     if (r.ok && r.token) {
       setAuthSession({ type: 'staff', token: r.token, staff: r.staff || null });
       return true;
     }
-  } catch {}
+  } catch (e) {
+    // Clear again on failure for clean state
+    clearAuthSession();
+    throw e;
+  }
   return false;
 }
 

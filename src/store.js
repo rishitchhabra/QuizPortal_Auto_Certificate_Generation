@@ -219,6 +219,25 @@ export async function updateStaff(id, data) {
 export async function deleteStaff(id) {
   return apiRequest(`/api/staff/${id}`, { method: 'DELETE' });
 }
+export async function resetStaffPassword(id, passwordHash) {
+  return apiRequest(`/api/staff/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passwordHash }) });
+}
+
+// Question image upload
+export async function uploadQuestionImage(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+  const headers = new Headers();
+  const session = getAuthSession();
+  if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
+  const response = await fetch(`${SERVER_BASE}/api/question-images`, { method: 'POST', headers, body: formData });
+  if (!response.ok) {
+    let message = response.statusText;
+    try { const body = await response.json(); message = body.error || message; } catch {}
+    throw new Error(message);
+  }
+  return response.json();
+}
 
 // Reports
 export async function getQuizReport(quizId) {

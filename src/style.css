@@ -2650,6 +2650,67 @@ select {
   margin-bottom: 22px;
 }
 
+/* Question image in quiz taking view */
+.question-image-wrap {
+  margin-bottom: 20px;
+}
+.question-image {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  object-fit: contain;
+  display: block;
+}
+
+/* Question image upload in builder */
+.q-image-section {
+  margin-bottom: 18px;
+}
+.q-image-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+  border: 2px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-subtle);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: border-color 0.2s, background 0.2s;
+}
+.q-image-upload:hover {
+  border-color: var(--primary);
+  background: hsla(var(--primary-hsl), 0.04);
+  color: var(--primary);
+}
+.q-image-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-subtle);
+}
+.q-image-thumb {
+  max-width: 220px;
+  max-height: 160px;
+  border-radius: var(--r-sm);
+  object-fit: contain;
+  border: 1px solid var(--border);
+}
+.q-image-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
 /* Colorful option letter chips (A–F cycle) */
 .opt-letter-1 {
   background: var(--blue-soft);

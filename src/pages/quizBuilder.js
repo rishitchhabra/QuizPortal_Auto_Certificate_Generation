@@ -1,4 +1,4 @@
-import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches } from '../store.js';
+import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches, uploadQuestionImage } from '../store.js';
 import { Icon, Badge, Field, Inp, Txta, Sel, Toggle, EmptyState } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
 import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar, renderAccessDenied, batchPickerHTML, bindBatchPicker } from '../utils.js';
@@ -302,6 +302,24 @@ function renderQuestionEditor(q, i) {
     control: Inp({ className: 'q-text', value: q.text, placeholder: 'Enter the question…', attrs: `data-qi="${i}" style="font-weight:600"` })
   })}
 
+        <div class="q-image-section" data-qi="${i}">
+          ${q.image ? `
+            <div class="q-image-preview">
+              <img src="${q.image}" alt="Question image" class="q-image-thumb">
+              <div class="q-image-actions">
+                <button class="btn btn-danger-outline btn-sm q-image-remove" data-qi="${i}">${Icon('trash', 13)}<span>Remove image</span></button>
+              </div>
+            </div>
+          ` : `
+            <label class="q-image-upload" for="q-image-input-${i}">
+              ${Icon('image', 18)}
+              <span>Add Image to Question</span>
+              <span class="xs muted">JPG, PNG, GIF or WebP · Max 5MB</span>
+              <input type="file" id="q-image-input-${i}" class="q-image-input" data-qi="${i}" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none">
+            </label>
+          `}
+        </div>
+
         ${q.type === 'mcq' ? `
           <div style="margin-bottom:16px">
             <label class="field-label">Options <span class="field-req">*</span></label>
@@ -581,6 +599,39 @@ function bindEvents(app) {
     });
   });
 
+  // Question image upload
+  app.querySelectorAll('.q-image-input').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const qi = parseInt(input.dataset.qi);
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5MB', 'error'); return; }
+      try {
+        showToast('Uploading image…');
+        const result = await uploadQuestionImage(file);
+        if (result.url) {
+          currentQuiz.questions[qi].image = result.url;
+          await save();
+          showToast('Image added');
+          renderPage(app);
+        }
+      } catch (err) {
+        showToast('Image upload failed: ' + (err.message || 'Unknown error'), 'error');
+      }
+    });
+  });
+  app.querySelectorAll('.q-image-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const qi = parseInt(btn.dataset.qi);
+      if (currentQuiz.questions[qi]) {
+        delete currentQuiz.questions[qi].image;
+        await save();
+        showToast('Image removed');
+        renderPage(app);
+      }
+    });
+  });
+
   // Custom fields
   app.querySelector('#btn-add-custom-field')?.addEventListener('click', async () => {
     currentQuiz.customFields = currentQuiz.customFields || [];
@@ -719,9 +770,9 @@ async function toggleLive(app) {
 
 async function addQuestion(app, type) {
   if (type === 'mcq') {
-    currentQuiz.questions.push({ id: generateId(), type: 'mcq', text: '', options: ['', '', '', ''], correctAnswer: '', points: 1, required: true });
+    currentQuiz.questions.push({ id: generateId(), type: 'mcq', text: '', options: ['', '', '', ''], correctAnswer: '', points: 1, required: true, image: '' });
   } else {
-    currentQuiz.questions.push({ id: generateId(), type: 'tf', text: '', correctAnswer: '', points: 1, required: true });
+    currentQuiz.questions.push({ id: generateId(), type: 'tf', text: '', correctAnswer: '', points: 1, required: true, image: '' });
   }
   activeQ = currentQuiz.questions.length - 1;
   activeTab = 'questions';

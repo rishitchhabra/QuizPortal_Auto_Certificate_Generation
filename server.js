@@ -25,8 +25,10 @@ app.use(express.json({ limit: '25mb' }));
 
 // Ensure uploads directory exists for PPTX templates
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'pptx-templates');
+const QUESTION_IMAGES_DIR = path.join(process.cwd(), 'uploads', 'question-images');
 const TMP_DIR = path.join(process.cwd(), 'tmp');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(QUESTION_IMAGES_DIR)) fs.mkdirSync(QUESTION_IMAGES_DIR, { recursive: true });
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
 // Multer for PPTX file uploads
@@ -606,6 +608,12 @@ app.post('/api/users', asyncHandler(async (req, res) => {
 
 app.delete('/api/users/:id', asyncHandler(async (req, res) => {
   await requireStaffPermission(req, 'users', 'delete');
+  // Look up the user's user_id so we can cascade-delete their submissions
+  const userRow = await pool.query('SELECT user_id FROM users WHERE id = $1', [req.params.id]);
+  if (userRow.rows[0]) {
+    const uid = userRow.rows[0].user_id;
+    await pool.query(`DELETE FROM submissions WHERE LOWER(participant->>'userId') = LOWER($1)`, [uid]);
+  }
   await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
 }));
@@ -614,6 +622,15 @@ app.post('/api/users/bulk-delete', asyncHandler(async (req, res) => {
   await requireStaffPermission(req, 'users', 'delete');
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   if (!ids.length) return res.status(400).json({ error: 'No IDs provided' });
+  // Cascade-delete submissions for all users being removed
+  const usersResult = await pool.query('SELECT user_id FROM users WHERE id = ANY($1)', [ids]);
+  const userIds = usersResult.rows.map(r => r.user_id).filter(Boolean);
+  if (userIds.length) {
+    await pool.query(
+      `DELETE FROM submissions WHERE LOWER(participant->>'userId') = ANY($1)`,
+      [userIds.map(u => u.toLowerCase())]
+    );
+  }
   const result = await pool.query('DELETE FROM users WHERE id = ANY($1)', [ids]);
   res.json({ ok: true, deleted: result.rowCount });
 }));
@@ -801,6 +818,31 @@ app.delete('/api/staff/:id', asyncHandler(async (req, res) => {
   await requireStaffPermission(req, 'settings', 'manageStaff');
   await pool.query('DELETE FROM staff WHERE id = $1', [req.params.id]);
   res.json({ ok: true });
+}));
+
+/* ============================================================
+   Question Image Upload
+   ============================================================ */
+
+const questionImageUpload = multer({
+  dest: QUESTION_IMAGES_DIR,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) cb(null, true);
+    else cb(new Error('Only image files (jpg, png, gif, webp) are allowed'));
+  }
+});
+
+app.post('/api/question-images', questionImageUpload.single('image'), asyncHandler(async (req, res) => {
+  await requireStaffPermission(req, 'quizzes', 'create');
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const finalName = `${generateId()}${ext}`;
+  const finalPath = path.join(QUESTION_IMAGES_DIR, finalName);
+  fs.renameSync(req.file.path, finalPath);
+  res.json({ ok: true, url: `/static/question-images/${finalName}` });
 }));
 
 /* ============================================================
@@ -1167,6 +1209,8 @@ app.delete('/api/tables/:name', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Serve question images from uploads/question-images
+app.use('/static/question-images', express.static(QUESTION_IMAGES_DIR));
 app.use('/static', express.static(path.join(process.cwd(), 'public')));
 app.use(express.static(path.join(process.cwd(), 'dist')));
 app.get('*', (req, res) => res.sendFile(path.join(process.cwd(), 'dist', 'index.html')));

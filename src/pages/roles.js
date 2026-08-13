@@ -1,4 +1,4 @@
-import { getStaff, addStaff, updateStaff, deleteStaff, getBatches } from '../store.js';
+import { getStaff, addStaff, updateStaff, deleteStaff, getBatches, resetStaffPassword } from '../store.js';
 import { renderNavbar, showToast, escapeHtml, bindNavbar, showModal, renderAccessDenied, batchPickerHTML, bindBatchPicker } from '../utils.js';
 import { Icon, Badge, StatCard } from '../components.js';
 import { requireAdmin, hashPassword, hasPermission } from '../auth.js';
@@ -121,13 +121,14 @@ export async function renderRoles(app) {
                     <div style="flex:1; min-width:0">
                       <div style="font-weight:700; font-size:14.5px">${escapeHtml(t.name)}</div>
                       <div class="xs muted" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:2px">
-                        <span>${escapeHtml(t.userId)}</span>
+                        <span style="font-weight:600; color:var(--text)">User ID: <code style="background:var(--surface-subtle); padding:1px 6px; border-radius:4px; font-family:var(--font-mono); font-size:12px">${escapeHtml(t.userId)}</code></span>
                         <span>·</span>
                         <span>${(t.assignedBatches || []).length ? `Batches: ${t.assignedBatches.map(escapeHtml).join(', ')}` : 'All batches'}</span>
                       </div>
                     </div>
                     <div class="flex" style="gap:8px">
                       <button class="btn btn-secondary btn-sm t-edit" data-id="${t.id}">${Icon('edit', 13)}<span>Permissions</span></button>
+                      <button class="btn btn-secondary btn-sm t-reset-pw" data-id="${t.id}" data-name="${escapeHtml(t.name)}">${Icon('lock', 13)}<span>Reset Password</span></button>
                       <button class="icon-btn icon-btn-danger t-del" data-id="${t.id}" data-name="${escapeHtml(t.name)}" aria-label="Delete ${escapeHtml(t.name)}">${Icon('trash', 15)}</button>
                     </div>
                   </div>
@@ -181,6 +182,45 @@ export async function renderRoles(app) {
         showToast('Teacher removed');
         renderRoles(app);
       }, { confirmText: 'Delete', danger: true });
+    });
+  });
+
+  // Reset password
+  app.querySelectorAll('.t-reset-pw').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.name;
+      const staffId = btn.dataset.id;
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal" style="max-width:440px" role="dialog" aria-modal="true" aria-label="Reset password">
+          <div class="modal-title">Reset Password · ${escapeHtml(name)}</div>
+          <div class="field" style="margin:16px 0">
+            <label class="field-label" for="rp-pass">New Password <span class="field-req">*</span></label>
+            <input type="text" class="input" id="rp-pass" placeholder="Min 4 characters" autocomplete="off">
+          </div>
+          <div class="flex" style="gap:10px; justify-content:flex-end">
+            <button class="btn btn-ghost" id="rp-cancel">Cancel</button>
+            <button class="btn btn-primary" id="rp-save">${Icon('check', 15)}<span>Reset Password</span></button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      requestAnimationFrame(() => modal.classList.add('active'));
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      modal.querySelector('#rp-cancel').addEventListener('click', () => modal.remove());
+      modal.querySelector('#rp-save').addEventListener('click', async () => {
+        const pass = modal.querySelector('#rp-pass').value;
+        if (!pass || pass.length < 4) { showToast('Password must be at least 4 characters', 'error'); return; }
+        try {
+          const pw = await hashPassword(pass);
+          await resetStaffPassword(staffId, pw);
+          showToast('Password reset successfully');
+          modal.remove();
+        } catch (e) {
+          showToast(e.message || 'Reset failed', 'error');
+        }
+      });
+      setTimeout(() => modal.querySelector('#rp-pass')?.focus(), 30);
     });
   });
 }

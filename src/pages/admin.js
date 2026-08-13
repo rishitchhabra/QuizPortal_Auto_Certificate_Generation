@@ -110,7 +110,11 @@ export async function renderAdminLogin(app) {
 
     let ok;
     if (role === 'teacher') {
-      ok = await teacherLogin(id, pass);
+      try {
+        ok = await teacherLogin(id, pass);
+      } catch {
+        ok = false;
+      }
       if (ok) {
         showToast('Welcome back, Teacher');
         window.location.hash = '#/admin';
@@ -610,6 +614,7 @@ function renderQuizRow(quiz, subsCount, can = {}) {
   const items = [
     { id: 'copy', label: 'Copy link', icon: 'link' },
     ...(can.leaderboard ? [{ id: 'responses', label: 'Responses', icon: 'users' }] : []),
+    ...(can.editQuiz ? [{ id: 'rename', label: 'Rename', icon: 'edit-3' }] : []),
     ...(can.editQuiz || can.createQuiz ? [{ id: 'dup', label: 'Duplicate', icon: 'copy' }] : []),
     ...(can.publishQuiz ? [{ id: 'toggle', label: isLive ? 'Move to draft' : 'Make live', icon: isLive ? 'archive' : 'play' }] : []),
     ...(can.deleteQuiz ? [{ id: 'del', label: 'Delete', icon: 'trash', tone: 'danger' }] : [])
@@ -747,6 +752,41 @@ export function bindDropdowns(root) {
         });
       } else if (action === 'responses') {
         window.location.hash = `#/responses/${id}`;
+      } else if (action === 'rename') {
+        // Show rename modal
+        (async () => {
+          const { getQuiz } = await import('../store.js');
+          const quiz = await getQuiz(id);
+          if (!quiz) { showToast('Quiz not found', 'error'); return; }
+          const modal = document.createElement('div');
+          modal.className = 'modal-overlay';
+          modal.innerHTML = `
+            <div class="modal" style="max-width:440px" role="dialog" aria-modal="true" aria-label="Rename quiz">
+              <div class="modal-title">Rename Quiz</div>
+              <div class="field" style="margin:16px 0">
+                <label class="field-label" for="rn-title">Quiz Title <span class="field-req">*</span></label>
+                <input type="text" class="input" id="rn-title" value="${escapeHtml(quiz.title || '')}" placeholder="Enter new title">
+              </div>
+              <div class="flex" style="gap:10px; justify-content:flex-end">
+                <button class="btn btn-ghost" id="rn-cancel">Cancel</button>
+                <button class="btn btn-primary" id="rn-save">${Icon('check', 15)}<span>Save</span></button>
+              </div>
+            </div>`;
+          document.body.appendChild(modal);
+          requestAnimationFrame(() => modal.classList.add('active'));
+          modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+          modal.querySelector('#rn-cancel').addEventListener('click', () => modal.remove());
+          modal.querySelector('#rn-save').addEventListener('click', async () => {
+            const newTitle = modal.querySelector('#rn-title').value.trim();
+            if (!newTitle) { showToast('Title cannot be empty', 'error'); return; }
+            quiz.title = newTitle;
+            await saveQuiz(quiz);
+            showToast('Quiz renamed');
+            modal.remove();
+            renderAdminPanel(root.closest('#app') || document.getElementById('app'));
+          });
+          setTimeout(() => { const inp = modal.querySelector('#rn-title'); inp?.focus(); inp?.select(); }, 30);
+        })();
       } else if (action === 'dup') {
         const row = root.querySelector(`#quiz-table tr[data-id="${id}"]`);
         const btn = row?.querySelector('.dup-quiz');

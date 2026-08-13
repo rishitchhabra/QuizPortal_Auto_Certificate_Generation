@@ -420,6 +420,7 @@ function renderContinuousQuizShell(app) {
               <div id="err-banner-${i}"></div>
 
               <h2 class="question-text" id="q-title-${i}">${escapeHtml(q.text)}</h2>
+              ${q.image ? `<div class="question-image-wrap"><img src="${q.image}" alt="Question ${i + 1} image" class="question-image"></div>` : ''}
 
               <div class="options-group" data-qi="${i}">
                 ${q.type === 'tf' ? `
