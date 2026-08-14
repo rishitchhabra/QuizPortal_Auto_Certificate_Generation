@@ -385,17 +385,29 @@ function bindImageEvents(app) {
 
     const selDom = app.querySelector(`.cert-el[data-elid="${selectedId}"]`);
     if (selDom) {
-      let dragging = false, dragStart = { x: 0, y: 0 }, elStart = { x: 0, y: 0 };
-      selDom.addEventListener('mousedown', e => { e.stopPropagation(); dragging = true; dragStart = { x: e.clientX, y: e.clientY }; elStart = { x: sel.x, y: sel.y }; });
-      window.addEventListener('mousemove', e => {
-        if (!dragging) return;
-        sel.x = Math.max(0, Math.min(850, elStart.x + e.clientX - dragStart.x));
-        sel.y = Math.max(0, Math.min(600, elStart.y + e.clientY - dragStart.y));
-        updateCanvasEl(sel);
-        const ix = app.querySelector('#prop-x'); const iy = app.querySelector('#prop-y');
-        if (ix) ix.value = sel.x; if (iy) iy.value = sel.y;
-      });
-      window.addEventListener('mouseup', () => { dragging = false; });
+      selDom.onmousedown = e => {
+        e.stopPropagation();
+        const dragStart = { x: e.clientX, y: e.clientY };
+        const elStart = { x: sel.x, y: sel.y };
+
+        const onMouseMove = (ev) => {
+          sel.x = Math.max(0, Math.min(850, elStart.x + ev.clientX - dragStart.x));
+          sel.y = Math.max(0, Math.min(600, elStart.y + ev.clientY - dragStart.y));
+          updateCanvasEl(sel);
+          const ix = app.querySelector('#prop-x');
+          const iy = app.querySelector('#prop-y');
+          if (ix) ix.value = sel.x;
+          if (iy) iy.value = sel.y;
+        };
+
+        const onMouseUp = () => {
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      };
     }
   }
 

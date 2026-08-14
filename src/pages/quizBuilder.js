@@ -502,24 +502,40 @@ function setSaveState(state) {
   }
 }
 
+let isSaving = false;
+let savePending = false;
+
 function markDirty() {
   setSaveState('unsaved');
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => autosave(), 800);
+  saveTimer = setTimeout(() => autosave(), 600);
 }
 
 async function autosave() {
+  if (isSaving) {
+    savePending = true;
+    return;
+  }
+  isSaving = true;
+  savePending = false;
   setSaveState('saving');
   try {
     await saveQuiz(currentQuiz);
     setSaveState('saved');
   } catch (err) {
     setSaveState('unsaved');
-    showToast('Failed to save: ' + (err.message || 'Server error'), 'error');
+  } finally {
+    isSaving = false;
+    if (savePending) {
+      savePending = false;
+      autosave();
+    }
   }
 }
 
 async function save() {
+  if (isSaving) return true;
+  isSaving = true;
   setSaveState('saving');
   try {
     await saveQuiz(currentQuiz);
@@ -529,6 +545,8 @@ async function save() {
     setSaveState('unsaved');
     showToast('Failed to save: ' + (err.message || 'Server error'), 'error');
     return false;
+  } finally {
+    isSaving = false;
   }
 }
 
@@ -536,44 +554,58 @@ async function save() {
 function bindEvents(app) {
   // Tabs
   app.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; window.scrollTo(0, 0); renderPage(app); });
+    btn.onclick = () => { activeTab = btn.dataset.tab; window.scrollTo(0, 0); renderPage(app); };
   });
 
   // Head actions
-  app.querySelector('#btn-save')?.addEventListener('click', async () => {
+  const btnSave = app.querySelector('#btn-save');
+  if (btnSave) btnSave.onclick = async () => {
     if (!validateQuiz()) return;
     await save();
     showToast('Quiz saved');
-  });
-  app.querySelector('#btn-toggle-live')?.addEventListener('click', () => toggleLive(app));
-  app.querySelector('#btn-publish-inline')?.addEventListener('click', () => toggleLive(app));
-  app.querySelector('#btn-preview')?.addEventListener('click', async () => {
+  };
+  const btnToggleLive = app.querySelector('#btn-toggle-live');
+  if (btnToggleLive) btnToggleLive.onclick = () => toggleLive(app);
+  const btnPublishInline = app.querySelector('#btn-publish-inline');
+  if (btnPublishInline) btnPublishInline.onclick = () => toggleLive(app);
+  const btnPreview = app.querySelector('#btn-preview');
+  if (btnPreview) btnPreview.onclick = async () => {
     if (!validateQuiz()) return;
     await saveQuiz(currentQuiz);
     window.location.hash = '#/take/' + currentQuiz.id;
-  });
-  app.querySelector('#btn-copy-link')?.addEventListener('click', async () => {
-    const url = app.querySelector('#share-link').value;
+  };
+  const btnCopyLink = app.querySelector('#btn-copy-link');
+  if (btnCopyLink) btnCopyLink.onclick = async () => {
+    const url = app.querySelector('#share-link')?.value;
     const ok = await copyTextToClipboard(url);
     if (ok) showToast('Quiz link copied');
     else showToast(url, 'info');
-  });
+  };
 
   // General / Evaluation live bindings
-  app.querySelector('#quiz-title')?.addEventListener('input', e => {
+  const quizTitleInput = app.querySelector('#quiz-title');
+  if (quizTitleInput) quizTitleInput.oninput = e => {
     currentQuiz.title = e.target.value;
     const t = document.getElementById('editor-title');
     if (t) t.textContent = quizTitle();
     markDirty();
-  });
-  app.querySelector('#quiz-desc')?.addEventListener('input', e => { currentQuiz.description = e.target.value; markDirty(); });
-  app.querySelector('#quiz-instructions')?.addEventListener('input', e => { currentQuiz.instructions = e.target.value; markDirty(); });
-  app.querySelector('#quiz-timer')?.addEventListener('input', e => { currentQuiz.timerMinutes = parseInt(e.target.value) || 0; markDirty(); });
-  app.querySelector('#quiz-passing')?.addEventListener('input', e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); });
-  app.querySelector('#quiz-start-time')?.addEventListener('input', e => { currentQuiz.startTime = e.target.value || ''; markDirty(); });
-  app.querySelector('#quiz-deadline')?.addEventListener('input', e => { currentQuiz.deadline = e.target.value || ''; markDirty(); });
-  app.querySelector('#quiz-cert-template')?.addEventListener('change', e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); });
-  app.querySelector('#quiz-auth-mode')?.addEventListener('change', e => {
+  };
+  const quizDescInput = app.querySelector('#quiz-desc');
+  if (quizDescInput) quizDescInput.oninput = e => { currentQuiz.description = e.target.value; markDirty(); };
+  const quizInstInput = app.querySelector('#quiz-instructions');
+  if (quizInstInput) quizInstInput.oninput = e => { currentQuiz.instructions = e.target.value; markDirty(); };
+  const quizTimerInput = app.querySelector('#quiz-timer');
+  if (quizTimerInput) quizTimerInput.oninput = e => { currentQuiz.timerMinutes = parseInt(e.target.value) || 0; markDirty(); };
+  const quizPassingInput = app.querySelector('#quiz-passing');
+  if (quizPassingInput) quizPassingInput.oninput = e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); };
+  const quizStartTimeInput = app.querySelector('#quiz-start-time');
+  if (quizStartTimeInput) quizStartTimeInput.oninput = e => { currentQuiz.startTime = e.target.value || ''; markDirty(); };
+  const quizDeadlineInput = app.querySelector('#quiz-deadline');
+  if (quizDeadlineInput) quizDeadlineInput.oninput = e => { currentQuiz.deadline = e.target.value || ''; markDirty(); };
+  const quizCertTemplateSel = app.querySelector('#quiz-cert-template');
+  if (quizCertTemplateSel) quizCertTemplateSel.onchange = e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); };
+  const quizAuthModeSel = app.querySelector('#quiz-auth-mode');
+  if (quizAuthModeSel) quizAuthModeSel.onchange = e => {
     currentQuiz.authMode = e.target.value;
     markDirty();
     const block = app.querySelector('#quiz-batch-block');
@@ -582,7 +614,7 @@ function bindEvents(app) {
     if (hint) hint.textContent = currentQuiz.authMode === 'userid'
       ? 'Students enter only their auto-generated User-ID. Their name is pulled from the master database.'
       : 'Participants sign in with Google so their name and email are captured automatically.';
-  });
+  };
   bindBatches(app);
   bindToggle(app, 'quiz-collect-phone', 'collectPhone');
   bindToggle(app, 'quiz-collect-org', 'collectOrg');
@@ -592,61 +624,133 @@ function bindEvents(app) {
   bindToggle(app, 'quiz-show-summary', 'showSummary');
   bindToggle(app, 'quiz-show-answers', 'showCorrectAnswers');
 
+  // Custom fields
+  const btnAddCustom = app.querySelector('#btn-add-custom-field');
+  if (btnAddCustom) btnAddCustom.onclick = async () => {
+    currentQuiz.customFields = currentQuiz.customFields || [];
+    currentQuiz.customFields.push({ id: generateId(), label: 'Class / Grade', type: 'dropdown', options: 'Class 6, Class 7, Class 8, Class 9, Class 10', required: true });
+    await save();
+    renderPage(app);
+  };
+  app.querySelectorAll('.cf-del').forEach(btn => {
+    btn.onclick = async () => {
+      currentQuiz.customFields = currentQuiz.customFields || [];
+      currentQuiz.customFields.splice(parseInt(btn.dataset.cfi), 1);
+      await save();
+      renderPage(app);
+    };
+  });
+  app.querySelectorAll('.cf-type').forEach(sel => {
+    sel.onchange = () => renderPage(app);
+  });
+  app.querySelectorAll('.cf-label').forEach(el => {
+    el.oninput = e => {
+      const cfi = parseInt(e.target.dataset.cfi);
+      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].label = e.target.value; markDirty(); }
+    };
+  });
+  app.querySelectorAll('.cf-options').forEach(el => {
+    el.oninput = e => {
+      const cfi = parseInt(e.target.dataset.cfi);
+      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].options = e.target.value; markDirty(); }
+    };
+  });
+  app.querySelectorAll('.cf-req').forEach(el => {
+    el.onchange = e => {
+      const cfi = parseInt(e.target.dataset.cfi);
+      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].required = e.target.checked; markDirty(); }
+    };
+  });
+
+  // Add question buttons
+  const btnAddQ = app.querySelector('#btn-add-q');
+  if (btnAddQ) btnAddQ.onclick = () => addQuestion(app, 'mcq');
+  const btnAddTf = app.querySelector('#btn-add-tf');
+  if (btnAddTf) btnAddTf.onclick = () => addQuestion(app, 'tf');
+
+  // Sidebar navigation + search
+  app.querySelectorAll('.q-item').forEach(item => {
+    item.onclick = () => switchQuestionView(app, parseInt(item.dataset.qi));
+  });
+  const qSearchInput = app.querySelector('.q-search');
+  if (qSearchInput) qSearchInput.oninput = e => {
+    const q = e.target.value.toLowerCase();
+    app.querySelectorAll('.q-item').forEach(it => {
+      it.style.display = it.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  };
+
+  // Bind active question editor events inside .editor-main
+  bindQuestionEditorEvents(app);
+}
+
+function bindQuestionEditorEvents(app) {
+  const main = app.querySelector('.editor-main');
+  if (!main) return;
+
   // Active question live editing
-  app.querySelector('.q-text')?.addEventListener('input', e => {
+  const qTextInput = main.querySelector('.q-text');
+  if (qTextInput) qTextInput.oninput = e => {
     const i = parseInt(e.target.dataset.qi);
     if (currentQuiz.questions[i]) {
       currentQuiz.questions[i].text = e.target.value;
       markDirty();
       updateSidebarPreview(i);
     }
-  });
-  app.querySelectorAll('.opt-text').forEach(el => {
-    el.addEventListener('input', e => {
+  };
+  main.querySelectorAll('.opt-text').forEach(el => {
+    el.oninput = e => {
       const qi = parseInt(el.dataset.qi), oi = parseInt(el.dataset.oi);
-      if (currentQuiz.questions[qi]?.options) { currentQuiz.questions[qi].options[oi] = e.target.value; markDirty(); }
-    });
+      if (currentQuiz.questions[qi]?.options) {
+        currentQuiz.questions[qi].options[oi] = e.target.value;
+        markDirty();
+      }
+    };
   });
-  app.querySelectorAll('.q-points').forEach(el => {
-    el.addEventListener('input', e => {
+  main.querySelectorAll('.q-points').forEach(el => {
+    el.oninput = e => {
       const qi = parseInt(el.dataset.qi);
-      if (currentQuiz.questions[qi]) currentQuiz.questions[qi].points = parseInt(e.target.value) || 1;
-      markDirty();
-    });
+      if (currentQuiz.questions[qi]) {
+        currentQuiz.questions[qi].points = parseInt(e.target.value) || 1;
+        markDirty();
+      }
+    };
   });
-  app.querySelectorAll('.q-required').forEach(el => {
-    el.addEventListener('change', e => {
+  main.querySelectorAll('.q-required').forEach(el => {
+    el.onchange = e => {
       const qi = parseInt(el.dataset.qi);
-      if (currentQuiz.questions[qi]) currentQuiz.questions[qi].required = el.checked;
-      markDirty();
-    });
+      if (currentQuiz.questions[qi]) {
+        currentQuiz.questions[qi].required = el.checked;
+        markDirty();
+      }
+    };
   });
-  app.querySelectorAll('.q-radio-mcq, .q-radio-tf').forEach(radio => {
-    radio.addEventListener('change', async () => {
+  main.querySelectorAll('.q-radio-mcq, .q-radio-tf').forEach(radio => {
+    radio.onchange = async () => {
       const qi = parseInt(radio.dataset.qi), oi = radio.dataset.oi;
       if (!currentQuiz.questions[qi]) return;
       currentQuiz.questions[qi].correctAnswer = oi;
-      await save();
-      switchQuestionView(app, qi);
-      const meta = app.querySelector(`.q-item[data-qi="${qi}"] .q-item-meta`);
-      if (meta) {
-        meta.innerHTML = `${Icon('check-circle', 11, 'check-inline')} <span style="color:var(--green)">Answer set</span> · ${currentQuiz.questions[qi].type === 'tf' ? 'True / False' : 'MCQ'} · ${currentQuiz.questions[qi].points || 1} pt`;
-      }
-    });
+      markDirty();
+      updateSidebarQItemMeta(app, qi);
+      updateEditorHeaderBadge(main, qi);
+    };
   });
 
   // Clicking anywhere on an option row selects it as the correct answer
-  app.querySelectorAll('.option-row').forEach(row => {
-    row.addEventListener('click', (e) => {
+  main.querySelectorAll('.option-row').forEach(row => {
+    row.onclick = (e) => {
       if (e.target.closest('.opt-text') || e.target.closest('.option-delete')) return;
       const radio = row.querySelector('.q-radio-mcq');
-      if (radio && !radio.checked) radio.click();
-    });
+      if (radio && !radio.checked) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    };
   });
 
   // Question image upload
-  app.querySelectorAll('.q-image-input').forEach(input => {
-    input.addEventListener('change', async (e) => {
+  main.querySelectorAll('.q-image-input').forEach(input => {
+    input.onchange = async (e) => {
       const qi = parseInt(input.dataset.qi);
       const file = e.target.files?.[0];
       if (!file) return;
@@ -658,91 +762,49 @@ function bindEvents(app) {
           currentQuiz.questions[qi].image = result.url;
           await save();
           showToast('Image added');
-          renderPage(app);
+          switchQuestionView(app, qi);
         }
       } catch (err) {
         showToast('Image upload failed: ' + (err.message || 'Unknown error'), 'error');
       }
-    });
+    };
   });
-  app.querySelectorAll('.q-image-remove').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  main.querySelectorAll('.q-image-remove').forEach(btn => {
+    btn.onclick = async () => {
       const qi = parseInt(btn.dataset.qi);
       if (currentQuiz.questions[qi]) {
         delete currentQuiz.questions[qi].image;
         await save();
         showToast('Image removed');
-        renderPage(app);
+        switchQuestionView(app, qi);
       }
-    });
+    };
   });
 
-  // Custom fields
-  app.querySelector('#btn-add-custom-field')?.addEventListener('click', async () => {
-    currentQuiz.customFields = currentQuiz.customFields || [];
-    currentQuiz.customFields.push({ id: generateId(), label: 'Class / Grade', type: 'dropdown', options: 'Class 6, Class 7, Class 8, Class 9, Class 10', required: true });
-    await save();
-    renderPage(app);
-  });
-  app.querySelectorAll('.cf-del').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      currentQuiz.customFields = currentQuiz.customFields || [];
-      currentQuiz.customFields.splice(parseInt(btn.dataset.cfi), 1);
-      await save();
-      renderPage(app);
-    });
-  });
-  app.querySelectorAll('.cf-type').forEach(sel => {
-    sel.addEventListener('change', () => renderPage(app));
-  });
-  app.querySelectorAll('.cf-label').forEach(el => {
-    el.addEventListener('input', e => {
-      const cfi = parseInt(e.target.dataset.cfi);
-      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].label = e.target.value; markDirty(); }
-    });
-  });
-  app.querySelectorAll('.cf-options').forEach(el => {
-    el.addEventListener('input', e => {
-      const cfi = parseInt(e.target.dataset.cfi);
-      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].options = e.target.value; markDirty(); }
-    });
-  });
-  app.querySelectorAll('.cf-req').forEach(el => {
-    el.addEventListener('change', e => {
-      const cfi = parseInt(e.target.dataset.cfi);
-      if (currentQuiz.customFields?.[cfi]) { currentQuiz.customFields[cfi].required = e.target.checked; markDirty(); }
-    });
-  });
-
-  // Add questions
-  app.querySelector('#btn-add-q')?.addEventListener('click', () => addQuestion(app, 'mcq'));
-  app.querySelector('#btn-add-tf')?.addEventListener('click', () => addQuestion(app, 'tf'));
-  app.querySelector('#btn-add-q-empty')?.addEventListener('click', () => addQuestion(app, 'mcq'));
-
-  // Options
-  app.querySelectorAll('.option-delete').forEach(el => {
-    el.addEventListener('click', async () => {
+  // Options add / delete / duplicate / delete question
+  main.querySelectorAll('.option-delete').forEach(el => {
+    el.onclick = async () => {
       const qi = parseInt(el.dataset.qi), oi = parseInt(el.dataset.oi), q = currentQuiz.questions[qi];
       if (!q || q.options.length <= 2) { showToast('Need at least 2 options', 'error'); return; }
       q.options.splice(oi, 1);
       if (q.correctAnswer === oi.toString()) q.correctAnswer = '';
       else if (parseInt(q.correctAnswer) > oi) q.correctAnswer = (parseInt(q.correctAnswer) - 1).toString();
       await save();
-      renderPage(app);
-    });
+      switchQuestionView(app, qi);
+    };
   });
-  app.querySelectorAll('.q-add-opt').forEach(el => {
-    el.addEventListener('click', async () => {
+  main.querySelectorAll('.q-add-opt').forEach(el => {
+    el.onclick = async () => {
       const qi = parseInt(el.dataset.qi);
       const q = currentQuiz.questions[qi];
       if (!q || q.options.length >= 8) { showToast('Maximum 8 options', 'error'); return; }
       q.options.push('');
       await save();
-      renderPage(app);
-    });
+      switchQuestionView(app, qi);
+    };
   });
-  app.querySelectorAll('.q-dup').forEach(el => {
-    el.addEventListener('click', async () => {
+  main.querySelectorAll('.q-dup').forEach(el => {
+    el.onclick = async () => {
       const qi = parseInt(el.dataset.qi);
       const dup = JSON.parse(JSON.stringify(currentQuiz.questions[qi]));
       dup.id = generateId();
@@ -750,30 +812,49 @@ function bindEvents(app) {
       activeQ = qi + 1;
       await save();
       renderPage(app);
-    });
+    };
   });
-  app.querySelectorAll('.q-del').forEach(el => {
-    el.addEventListener('click', async () => {
+  main.querySelectorAll('.q-del').forEach(el => {
+    el.onclick = async () => {
       currentQuiz.questions.splice(parseInt(el.dataset.qi), 1);
       if (activeQ >= currentQuiz.questions.length) activeQ = currentQuiz.questions.length - 1;
       if (activeQ < 0) activeQ = 0;
       await save();
       renderPage(app);
-    });
+    };
   });
 
-  // Sidebar navigation + search
-  app.querySelectorAll('.q-item').forEach(item => {
-    item.addEventListener('click', () => switchQuestionView(app, parseInt(item.dataset.qi)));
-  });
-  app.querySelector('#q-prev')?.addEventListener('click', () => switchQuestionView(app, activeQ - 1));
-  app.querySelector('#q-next')?.addEventListener('click', () => switchQuestionView(app, activeQ + 1));
-  app.querySelector('.q-search')?.addEventListener('input', e => {
-    const q = e.target.value.toLowerCase();
-    app.querySelectorAll('.q-item').forEach(it => {
-      it.style.display = it.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-  });
+  // Footer nav
+  const btnPrev = main.querySelector('#q-prev');
+  if (btnPrev) btnPrev.onclick = () => switchQuestionView(app, activeQ - 1);
+  const btnNext = main.querySelector('#q-next');
+  if (btnNext) btnNext.onclick = () => switchQuestionView(app, activeQ + 1);
+  const btnAddQEmpty = main.querySelector('#btn-add-q-empty');
+  if (btnAddQEmpty) btnAddQEmpty.onclick = () => addQuestion(app, 'mcq');
+}
+
+function updateSidebarQItemMeta(app, qi) {
+  const meta = app.querySelector(`.q-item[data-qi="${qi}"] .q-item-meta`);
+  const q = currentQuiz.questions[qi];
+  if (meta && q) {
+    const done = qItemState(q) === 'done';
+    meta.innerHTML = done
+      ? `${Icon('check-circle', 11, 'check-inline')} <span style="color:var(--green)">Answer set</span> · ${q.type === 'tf' ? 'True / False' : 'MCQ'} · ${q.points || 1} pt`
+      : `${Icon('alert-circle', 11)} <span style="color:var(--red); font-weight:600">Answer not set</span> · ${q.type === 'tf' ? 'True / False' : 'MCQ'} · ${q.points || 1} pt`;
+  }
+}
+
+function updateEditorHeaderBadge(main, qi) {
+  const badge = main.querySelector('.field-label + .badge');
+  const q = currentQuiz.questions[qi];
+  if (badge && q) {
+    const done = qItemState(q) === 'done';
+    badge.className = done ? 'badge badge-green' : 'badge badge-red';
+    badge.style.cssText = 'display:inline-flex; align-items:center; gap:4px; font-weight:600';
+    badge.innerHTML = done
+      ? `${Icon('check-circle', 12)} Correct answer set`
+      : `${Icon('alert-circle', 12)} Answer not set`;
+  }
 }
 
 function switchQuestionView(app, newIndex) {
@@ -810,7 +891,7 @@ function switchQuestionView(app, newIndex) {
         </div>
       ` : ''}
     `;
-    bindEvents(app);
+    bindQuestionEditorEvents(app);
   }
 }
 
