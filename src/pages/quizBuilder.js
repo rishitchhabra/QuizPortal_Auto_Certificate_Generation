@@ -19,6 +19,7 @@ const TABS = [
 function quizTitle() { return (currentQuiz?.title || '').trim() || 'Untitled quiz'; }
 
 export async function renderQuizBuilder(app, params) {
+  window.scrollTo(0, 0);
   if (!requireAdmin()) return;
   const quizId = params[0];
   if (quizId) {
@@ -225,8 +226,7 @@ function renderQuestionsTab() {
       <aside class="editor-sidebar">
         <div class="sidebar-card">
           <div class="sidebar-head">
-            <span class="sidebar-title">Questions · ${total}</span>
-            <span class="xs text-3">${currentQuiz.questions.filter(qq => qItemState(qq) === 'done').length} answer${currentQuiz.questions.filter(qq => qItemState(qq) === 'done').length === 1 ? '' : 's'} set</span>
+            <span class="sidebar-title">Questions (${total})</span>
           </div>
           <div class="sidebar-search">
             <div class="search-wrap">${Icon('search', 15)}<input class="input q-search" type="text" placeholder="Search questions…" style="height:36px" aria-label="Search questions"></div>
@@ -538,7 +538,7 @@ async function save() {
 function bindEvents(app) {
   // Tabs
   app.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; renderPage(app); });
+    btn.addEventListener('click', () => { activeTab = btn.dataset.tab; window.scrollTo(0, 0); renderPage(app); });
   });
 
   // Head actions

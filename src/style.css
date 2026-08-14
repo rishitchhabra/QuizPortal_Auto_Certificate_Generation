@@ -3189,8 +3189,8 @@ select {
 /* Sidebar */
 .editor-sidebar {
   position: sticky;
-  top: calc(var(--nav-h) + 16px);
-  max-height: calc(100vh - var(--nav-h) - 32px);
+  top: calc(var(--nav-h) + 130px);
+  max-height: calc(100vh - var(--nav-h) - 145px);
   display: flex;
   flex-direction: column;
 }
@@ -3203,7 +3203,8 @@ select {
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - var(--nav-h) - 32px);
+  height: 100%;
+  max-height: calc(100vh - var(--nav-h) - 145px);
 }
 
 .sidebar-head,
