@@ -3189,7 +3189,10 @@ select {
 /* Sidebar */
 .editor-sidebar {
   position: sticky;
-  top: calc(var(--nav-h) + 68px);
+  top: calc(var(--nav-h) + 16px);
+  max-height: calc(100vh - var(--nav-h) - 32px);
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-card {
@@ -3198,31 +3201,21 @@ select {
   background: var(--surface);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-}
-
-.sidebar-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  max-height: calc(100vh - var(--nav-h) - 32px);
 }
 
-.sidebar-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.sidebar-search {
-  padding: 12px;
-  border-bottom: 1px solid var(--border);
+.sidebar-head,
+.sidebar-search,
+.sidebar-add {
+  flex: none;
 }
 
 .q-list {
-  max-height: 460px;
+  flex: 1 1 auto;
+  min-height: 100px;
+  max-height: none;
   overflow-y: auto;
   padding: 8px;
 }

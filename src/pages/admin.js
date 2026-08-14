@@ -604,6 +604,14 @@ export async function renderAdminPanel(app) {
 function renderQuizRow(quiz, subsCount, can = {}) {
   const isLive = quiz.isPublished;
   const qCount = quiz.questions?.length || 0;
+  const unansCount = (quiz.questions || []).filter(q => {
+    if (q.type === 'mcq') {
+      return q.correctAnswer === '' || q.correctAnswer === undefined || q.correctAnswer === null;
+    } else if (q.type === 'tf') {
+      return q.correctAnswer !== 'true' && q.correctAnswer !== 'false';
+    }
+    return true;
+  }).length;
   const deadlineTxt = formatDeadline(quiz.deadline);
   const createdTxt = formatCreated(quiz.createdAt);
   const title = quiz.title || 'Untitled Quiz';
@@ -628,10 +636,14 @@ function renderQuizRow(quiz, subsCount, can = {}) {
           <div style="min-width:0">
             <div class="quiz-title">${escapeHtml(title)}</div>
             <div class="quiz-desc-sub">${escapeHtml(desc)}</div>
+            ${unansCount > 0 ? `<div style="font-size:12px; font-weight:600; color:var(--red, #ef4444); margin-top:3px; display:inline-flex; align-items:center; gap:4px">${Icon('alert-circle', 12)} <span>${unansCount} question${unansCount === 1 ? '' : 's'} not answered</span></div>` : ''}
           </div>
         </div>
       </td>
-      <td><span class="mono">${qCount}</span></td>
+      <td>
+        <span class="mono">${qCount}</span>
+        ${unansCount > 0 ? `<div style="font-size:11px; font-weight:600; color:var(--red, #ef4444); margin-top:2px; display:flex; align-items:center; gap:3px" title="${unansCount} question(s) missing correct answer">${Icon('alert-circle', 11)} ${unansCount} unanswered</div>` : ''}
+      </td>
       <td>
         ${can.leaderboard ? `<a href="#/responses/${quiz.id}" class="meta-item" style="text-decoration:none">${Icon('users', 14)}<span>${subsCount || 0}</span></a>` : `<span class="mono muted">${subsCount || 0}</span>`}
       </td>

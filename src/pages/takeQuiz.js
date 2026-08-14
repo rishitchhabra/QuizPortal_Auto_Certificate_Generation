@@ -748,12 +748,14 @@ function renderResults(submission) {
 
 function renderReviewItem(qr, qi) {
   const isCorrect = qr.correct;
+  const userOptIdx = parseInt(qr.userAnswer);
   const userOptLabel = qr.type === 'tf'
     ? (qr.userAnswer === 'true' ? 'True' : qr.userAnswer === 'false' ? 'False' : 'Unanswered')
-    : (qr.options?.[parseInt(qr.userAnswer)] || 'Unanswered');
+    : (!isNaN(userOptIdx) && qr.options?.[userOptIdx] !== undefined ? qr.options[userOptIdx] : 'Unanswered');
+  const correctOptIdx = parseInt(qr.correctAnswer);
   const correctOptLabel = qr.type === 'tf'
     ? (qr.correctAnswer === 'true' ? 'True' : 'False')
-    : (qr.options?.[parseInt(qr.correctAnswer)] || qr.correctAnswer);
+    : (!isNaN(correctOptIdx) && qr.options?.[correctOptIdx] !== undefined ? qr.options[correctOptIdx] : qr.correctAnswer);
 
   return `
     <div class="acc-item ${!isCorrect ? 'open' : ''}">

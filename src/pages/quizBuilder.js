@@ -63,6 +63,9 @@ export async function renderQuizBuilder(app, params) {
 }
 
 async function renderPage(app) {
+  const qListEl = app.querySelector('.q-list');
+  const savedScroll = qListEl ? qListEl.scrollTop : 0;
+
   const certs = await getAllCertTemplates();
   app.innerHTML = `
     ${renderNavbar()}
@@ -106,6 +109,11 @@ async function renderPage(app) {
   bindNavbar(app);
   bindEvents(app);
   setSaveState('saved');
+
+  const newQListEl = app.querySelector('.q-list');
+  if (newQListEl && savedScroll) {
+    newQListEl.scrollTop = savedScroll;
+  }
 }
 
 function statusBadge() {
@@ -309,23 +317,16 @@ function renderQuestionEditor(q, i) {
     control: Inp({ className: 'q-text', value: q.text, placeholder: 'Enter the question…', attrs: `data-qi="${i}" style="font-weight:600"` })
   })}
 
-        <div class="q-image-section" data-qi="${i}">
-          ${q.image ? `
+        ${q.image ? `
+          <div class="q-image-section" data-qi="${i}" style="margin-bottom:16px">
             <div class="q-image-preview">
               <img src="${q.image}" alt="Question image" class="q-image-thumb">
               <div class="q-image-actions">
                 <button class="btn btn-danger-outline btn-sm q-image-remove" data-qi="${i}">${Icon('trash', 13)}<span>Remove image</span></button>
               </div>
             </div>
-          ` : `
-            <label class="q-image-upload" for="q-image-input-${i}">
-              ${Icon('image', 18)}
-              <span>Add Image to Question</span>
-              <span class="xs muted">JPG, PNG, GIF or WebP · Max 5MB</span>
-              <input type="file" id="q-image-input-${i}" class="q-image-input" data-qi="${i}" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none">
-            </label>
-          `}
-        </div>
+          </div>
+        ` : ''}
 
         ${q.type === 'mcq' ? `
           <div style="margin-bottom:16px">
@@ -333,18 +334,14 @@ function renderQuestionEditor(q, i) {
               <label class="field-label" style="margin-bottom:0">Options <span class="field-req">*</span></label>
               ${isAnswerSet 
                 ? `<span class="badge badge-green" style="display:inline-flex; align-items:center; gap:4px; font-weight:600">${Icon('check-circle', 12)} Correct answer set</span>` 
-                : `<span class="badge badge-red" style="display:inline-flex; align-items:center; gap:4px; font-weight:700">${Icon('alert-circle', 12)} No correct answer marked</span>`
+                : `<span class="badge badge-red" style="display:inline-flex; align-items:center; gap:4px; font-weight:600">${Icon('alert-circle', 12)} Answer not set</span>`
               }
             </div>
-            ${!isAnswerSet ? `
-              <div style="margin-bottom:12px; padding:10px 14px; border-radius:var(--r-sm); background:var(--red-soft, #fef2f2); border:1px solid var(--red, #ef4444); color:var(--red, #b91c1c); font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px">
-                ${Icon('alert-circle', 16)} Please mark the correct answer below using the radio button on the left.
-              </div>
-            ` : `<p class="field-hint" style="margin-bottom:12px">Select the correct answer using the radio button on the left.</p>`}
+            <p class="field-hint" style="margin-bottom:12px">Select the correct answer using the radio button on the left.</p>
             ${(q.options || []).map((opt, oi) => {
               const isCorrect = String(q.correctAnswer) === String(oi);
               return `
-                <div class="option-row ${isCorrect ? 'correct-option' : ''}" data-qi="${i}" data-oi="${oi}" role="presentation" style="${isCorrect ? 'border: 1px solid var(--green); border-radius: var(--r-sm); padding: 2px 6px; background: hsla(var(--green-hsl, 142, 70%, 45%), 0.05);' : ''}">
+                <div class="option-row" data-qi="${i}" data-oi="${oi}" role="presentation">
                   <span class="radio-field">
                     <input type="radio" name="mcq-${i}" class="q-radio-mcq" data-qi="${i}" data-oi="${oi}" ${isCorrect ? 'checked' : ''} aria-label="Mark option ${letters[oi]} as correct">
                     <span class="radio-custom" aria-hidden="true"></span>
@@ -354,7 +351,15 @@ function renderQuestionEditor(q, i) {
                 </div>
               `;
             }).join('')}
-            <button class="btn btn-secondary btn-sm q-add-opt" data-qi="${i}" ${q.options?.length >= 8 ? 'disabled' : ''}>${Icon('plus', 14)}<span>Add option</span></button>
+            <div class="flex gap-sm items-center wrap" style="margin-top:10px">
+              <button class="btn btn-secondary btn-sm q-add-opt" data-qi="${i}" ${q.options?.length >= 8 ? 'disabled' : ''}>${Icon('plus', 14)}<span>Add option</span></button>
+              ${!q.image ? `
+                <label class="btn btn-secondary btn-sm" style="cursor:pointer; margin:0" for="q-image-input-${i}">
+                  ${Icon('image', 14)}<span>Add photo</span>
+                  <input type="file" id="q-image-input-${i}" class="q-image-input" data-qi="${i}" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none">
+                </label>
+              ` : ''}
+            </div>
           </div>
         ` : `
           <div style="margin-bottom:20px">
@@ -362,14 +367,10 @@ function renderQuestionEditor(q, i) {
               <label class="field-label" style="margin-bottom:0">Correct answer <span class="field-req">*</span></label>
               ${isAnswerSet 
                 ? `<span class="badge badge-green" style="display:inline-flex; align-items:center; gap:4px; font-weight:600">${Icon('check-circle', 12)} Correct answer set</span>` 
-                : `<span class="badge badge-red" style="display:inline-flex; align-items:center; gap:4px; font-weight:700">${Icon('alert-circle', 12)} No correct answer marked</span>`
+                : `<span class="badge badge-red" style="display:inline-flex; align-items:center; gap:4px; font-weight:600">${Icon('alert-circle', 12)} Answer not set</span>`
               }
             </div>
-            ${!isAnswerSet ? `
-              <div style="margin-bottom:12px; padding:10px 14px; border-radius:var(--r-sm); background:var(--red-soft, #fef2f2); border:1px solid var(--red, #ef4444); color:var(--red, #b91c1c); font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px">
-                ${Icon('alert-circle', 16)} Please select True or False as the correct answer.
-              </div>
-            ` : ''}
+            <p class="field-hint" style="margin-bottom:12px">Select True or False as the correct answer.</p>
             <div class="flex wrap" style="gap:10px; margin-top:4px">
               ${[['true', 'True'], ['false', 'False']].map(([v, label]) => `
                 <label class="choice-card ${String(q.correctAnswer) === v ? 'checked' : ''}">
@@ -378,6 +379,14 @@ function renderQuestionEditor(q, i) {
                 </label>
               `).join('')}
             </div>
+            ${!q.image ? `
+              <div style="margin-top:12px">
+                <label class="btn btn-secondary btn-sm" style="cursor:pointer; margin:0" for="q-image-input-${i}">
+                  ${Icon('image', 14)}<span>Add photo</span>
+                  <input type="file" id="q-image-input-${i}" class="q-image-input" data-qi="${i}" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none">
+                </label>
+              </div>
+            ` : ''}
           </div>
         `}
 
@@ -619,7 +628,11 @@ function bindEvents(app) {
       if (!currentQuiz.questions[qi]) return;
       currentQuiz.questions[qi].correctAnswer = oi;
       await save();
-      renderPage(app);
+      switchQuestionView(app, qi);
+      const meta = app.querySelector(`.q-item[data-qi="${qi}"] .q-item-meta`);
+      if (meta) {
+        meta.innerHTML = `${Icon('check-circle', 11, 'check-inline')} <span style="color:var(--green)">Answer set</span> · ${currentQuiz.questions[qi].type === 'tf' ? 'True / False' : 'MCQ'} · ${currentQuiz.questions[qi].points || 1} pt`;
+      }
     });
   });
 
@@ -752,16 +765,54 @@ function bindEvents(app) {
 
   // Sidebar navigation + search
   app.querySelectorAll('.q-item').forEach(item => {
-    item.addEventListener('click', () => { activeQ = parseInt(item.dataset.qi); renderPage(app); });
+    item.addEventListener('click', () => switchQuestionView(app, parseInt(item.dataset.qi)));
   });
-  app.querySelector('#q-prev')?.addEventListener('click', () => { if (activeQ > 0) { activeQ--; renderPage(app); } });
-  app.querySelector('#q-next')?.addEventListener('click', () => { if (activeQ < currentQuiz.questions.length - 1) { activeQ++; renderPage(app); } });
+  app.querySelector('#q-prev')?.addEventListener('click', () => switchQuestionView(app, activeQ - 1));
+  app.querySelector('#q-next')?.addEventListener('click', () => switchQuestionView(app, activeQ + 1));
   app.querySelector('.q-search')?.addEventListener('input', e => {
     const q = e.target.value.toLowerCase();
     app.querySelectorAll('.q-item').forEach(it => {
       it.style.display = it.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
   });
+}
+
+function switchQuestionView(app, newIndex) {
+  if (newIndex < 0 || newIndex >= currentQuiz.questions.length) return;
+  activeQ = newIndex;
+
+  app.querySelectorAll('.q-item').forEach((item) => {
+    const qi = parseInt(item.dataset.qi);
+    item.classList.toggle('active', qi === activeQ);
+  });
+
+  const mainEl = app.querySelector('.editor-main');
+  const total = currentQuiz.questions.length;
+  const q = currentQuiz.questions[activeQ];
+  if (mainEl) {
+    mainEl.innerHTML = `
+      ${q ? renderQuestionEditor(q, activeQ) : `
+        <div class="card">
+          ${EmptyState({
+            icon: 'list-checks',
+            title: 'No questions yet',
+            desc: 'Add your first multiple-choice or true/false question to get started.',
+            action: `<button class="btn btn-primary" id="btn-add-q-empty">${Icon('plus', 15)}<span>Add a question</span></button>`
+          })}
+        </div>
+      `}
+      ${total > 1 ? `
+        <div class="card" style="padding:14px 20px">
+          <div class="footer-nav">
+            <button class="btn btn-secondary btn-sm" id="q-prev" ${activeQ === 0 ? 'disabled' : ''}>${Icon('chevron-left', 14)}<span>Previous</span></button>
+            <span class="sm text-2 mono">Question ${activeQ + 1} of ${total}</span>
+            <button class="btn btn-secondary btn-sm" id="q-next" ${activeQ === total - 1 ? 'disabled' : ''}><span>Next</span>${Icon('chevron-right', 14)}</button>
+          </div>
+        </div>
+      ` : ''}
+    `;
+    bindEvents(app);
+  }
 }
 
 function bindToggle(app, id, key) {
