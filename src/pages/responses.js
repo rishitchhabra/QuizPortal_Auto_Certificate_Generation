@@ -76,19 +76,35 @@ export async function renderResponses(app, params) {
               </div>
               <div class="accordion">
                 ${leaderboard.map((sub, i) => {
-                  const rankBadge = i === 0 ? Badge('1st', { tone: 'amber' }) : i === 1 ? Badge('2nd', { tone: 'gray' }) : i === 2 ? Badge('3rd', { tone: 'amber' }) : `<span class="rank-num">${i + 1}</span>`;
-                  const pctTone = sub.percent >= 80 ? 'green' : sub.percent >= 50 ? 'amber' : 'red';
+                  const passScore = quiz.passingPercent !== undefined && quiz.passingPercent !== null && quiz.passingPercent !== '' ? Number(quiz.passingPercent) : 50;
+                  const isPassed = passScore === 0 || sub.percent >= passScore;
+                  sub.passed = isPassed;
+
+                  const pctTone = isPassed
+                    ? 'green'
+                    : (sub.percent >= Math.max(0, passScore - 15) ? 'amber' : 'red');
+
+                  const rankBadge = i === 0
+                    ? `<span class="badge badge-amber" style="font-weight:800; font-size:12px; background:linear-gradient(135deg, #fef3c7, #fde68a); color:#92400e; border:1px solid #f59e0b">🥇 1st</span>`
+                    : i === 1
+                    ? `<span class="badge badge-gray" style="font-weight:800; font-size:12px; background:linear-gradient(135deg, #f3f4f6, #e5e7eb); color:#374151; border:1px solid #9ca3af">🥈 2nd</span>`
+                    : i === 2
+                    ? `<span class="badge badge-amber" style="font-weight:800; font-size:12px; background:linear-gradient(135deg, #ffedd5, #fed7aa); color:#9a3412; border:1px solid #f97316">🥉 3rd</span>`
+                    : `<span class="rank-num" style="font-weight:600; color:var(--text-3); font-size:13px">${i + 1}th</span>`;
+
+                  const studentClass = sub.participant?.classSection || sub.participant?.class || sub.participant?.custom?.['Class / Grade'] || sub.participant?.custom?.['Class'] || sub.participant?.custom?.['Grade'] || sub.participant?.email || '';
+                  const displayClass = studentClass.includes('@') ? studentClass : (studentClass.toLowerCase().startsWith('class') ? studentClass : `Class: ${studentClass}`);
                   const customStr = sub.participant?.custom
-                    ? Object.entries(sub.participant.custom).map(([k, v]) => `${k}: ${v}`).join(' · ')
+                    ? Object.entries(sub.participant.custom).filter(([k]) => !['class', 'class / grade', 'grade'].includes(k.toLowerCase())).map(([k, v]) => `${k}: ${v}`).join(' · ')
                     : (sub.participant?.org || '');
                   const detailItems = sub.questionResults || [];
                   return `
-                    <div class="acc-item ${i === 0 ? 'open' : ''}">
-                      <button class="acc-header" aria-expanded="${i === 0}" aria-controls="resp-body-${i}">
+                    <div class="acc-item">
+                      <button class="acc-header" aria-expanded="false" aria-controls="resp-body-${i}">
                         <span class="acc-icon">${rankBadge}</span>
                         <span class="acc-title">
                           <span style="display:block">${escapeHtml(sub.participant?.name || 'Anonymous')}</span>
-                          <span class="xs muted" style="font-weight:400">${escapeHtml(sub.participant?.email || '')}</span>
+                          <span class="xs muted" style="font-weight:500">${escapeHtml(displayClass)}</span>
                         </span>
                         <span class="acc-meta">
                           ${customStr ? `<span class="xs muted" style="max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(customStr)}</span>` : ''}
