@@ -153,8 +153,6 @@ async function renderUserIdSignIn(app) {
     if (!participant.email) participant.email = `${student.userId}@student.local`;
     renderParticipantForm(app);
   });
-
-  setTimeout(() => input.focus(), 50);
 }
 
 function renderNotice(app, { icon, title, desc }) {
