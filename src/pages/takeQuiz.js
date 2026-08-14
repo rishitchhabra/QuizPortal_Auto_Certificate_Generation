@@ -7,6 +7,7 @@ let quiz = null, participant = {}, answers = {};
 let timerInterval = null, timeLeft = 0, quizStarted = false, quizSubmitted = false;
 
 export async function renderTakeQuiz(app, params) {
+  scrollPageTop();
   const quizId = params[0];
   quiz = await getQuiz(quizId);
 
@@ -200,6 +201,7 @@ function quizIntroHeader() {
   const totalPts = quiz.questions.reduce((s, q) => s + (q.points || 1), 0);
   const hasCert = !!quiz.certificateTemplateId;
   const subj = quizSubject();
+  const passingPercent = quiz.passingPercent !== undefined && quiz.passingPercent !== null && quiz.passingPercent !== '' ? Number(quiz.passingPercent) : 0;
   return `
     <div class="quiz-intro">
       <span class="quiz-intro-icon ${subj.cls}" style="--subj:${subj.color}">${Icon(subj.icon, 24)}</span>
@@ -223,11 +225,13 @@ function quizIntroHeader() {
           <span class="mini-val">${totalPts}</span>
           <span class="mini-label">Total points</span>
         </div>
-        <div class="stat-card-mini">
-          <span class="mini-icon stat-green">${Icon('award', 15)}</span>
-          <span class="mini-val">${quiz.passingPercent || 50}%</span>
-          <span class="mini-label">Pass mark</span>
-        </div>
+        ${passingPercent > 0 ? `
+          <div class="stat-card-mini">
+            <span class="mini-icon stat-green">${Icon('award', 15)}</span>
+            <span class="mini-val">${passingPercent}%</span>
+            <span class="mini-label">Pass mark</span>
+          </div>
+        ` : ''}
       </div>
 
       ${hasCert ? `

@@ -45,6 +45,7 @@ export function startRouter() {
   }
 
   function handleRoute() {
+    window.scrollTo(0, 0);
     normalizePathRoute();
     const rawHash = window.location.hash.slice(1) || '/';
     const [path, ...params] = rawHash.split('/').filter(Boolean);

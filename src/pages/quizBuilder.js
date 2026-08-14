@@ -36,7 +36,8 @@ export async function renderQuizBuilder(app, params) {
     }
     currentQuiz = {
       id: generateId(),
-      title: '',
+      title: 'Untitled Quiz',
+      nickname: '',
       description: '',
       timerMinutes: 30,
       passingPercent: 50,
@@ -52,7 +53,11 @@ export async function renderQuizBuilder(app, params) {
       collectOrg: false,
       authMode: 'google',
       allowedBatches: [],
-      instructions: '',
+      instructions: `1. Read each question carefully before choosing your answer.
+2. The timer begins as soon as you click "Begin Quiz".
+3. Do not refresh or navigate away from the browser tab while taking the quiz.
+4. Review your selected answers before clicking "Submit Quiz".
+5. Upon reaching the passing score, your certificate will be generated automatically.`,
       limitPerUser: true,
       questions: [],
       createdAt: new Date().toISOString()
@@ -142,6 +147,7 @@ function renderGeneralTab() {
         <div class="q-editor-top"><div class="q-editor-title">Quiz details</div></div>
         <div class="panel">
           ${Field({ label: 'Quiz title', required: true, htmlFor: 'quiz-title', control: Inp({ id: 'quiz-title', value: currentQuiz.title, placeholder: 'e.g. General Chemistry — Final Assessment', className: 'input-lg' }) })}
+          ${Field({ label: 'Internal Nickname (Admin view only)', htmlFor: 'quiz-nickname', hint: 'Optional internal identifier for the Admin Dashboard. Participants will never see this.', control: Inp({ id: 'quiz-nickname', value: currentQuiz.nickname || '', placeholder: 'e.g. Set-A Batch 2026 / Term 1 Final' }) })}
           ${Field({ label: 'Description', htmlFor: 'quiz-desc', hint: 'Short summary shown in the quiz intro.', control: Txta({ id: 'quiz-desc', value: currentQuiz.description, rows: 3, placeholder: 'What is this quiz about?' }) })}
           ${Field({ label: 'Special instructions', htmlFor: 'quiz-instructions', hint: 'Optional. Shown on the pre-quiz screen after sign-in, right above Begin Quiz. Leave empty to hide.', control: Txta({ id: 'quiz-instructions', value: currentQuiz.instructions, rows: 5, placeholder: 'e.g. Read every question carefully. No negative marking. Answers are final once you submit…' }) })}
         </div>
@@ -590,6 +596,8 @@ function bindEvents(app) {
     if (t) t.textContent = quizTitle();
     markDirty();
   };
+  const quizNicknameInput = app.querySelector('#quiz-nickname');
+  if (quizNicknameInput) quizNicknameInput.oninput = e => { currentQuiz.nickname = e.target.value; markDirty(); };
   const quizDescInput = app.querySelector('#quiz-desc');
   if (quizDescInput) quizDescInput.oninput = e => { currentQuiz.description = e.target.value; markDirty(); };
   const quizInstInput = app.querySelector('#quiz-instructions');
