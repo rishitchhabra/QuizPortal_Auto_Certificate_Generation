@@ -1,4 +1,4 @@
-import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getSubmissionsByUserId, getGoogleUser, createCertificateJob, getCertificateStatus, certificateUrl, verifyUserId } from '../store.js';
+import { getQuiz, saveSubmission, generateId, getCertTemplate, getSubmissionsByEmail, getSubmissionsByUserId, getGoogleUser, createCertificateJob, getCertificateStatus, certificateUrl, verifyUserId, getServerTime } from '../store.js';
 import { renderNavbar, showToast, formatTime, shuffleArray, showModal, escapeHtml, bindNavbar, subjectFor, burstConfetti } from '../utils.js';
 import { initGoogleAuth, renderGoogleButton, getGoogleClientId } from '../auth.js';
 import { Icon, Badge } from '../components.js';
@@ -20,9 +20,19 @@ export async function renderTakeQuiz(app, params) {
     return;
   }
 
+  const serverNow = await getServerTime();
+
+  if (quiz.startTime) {
+    const startDate = new Date(quiz.startTime);
+    if (!isNaN(startDate.getTime()) && serverNow < startDate) {
+      renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz not started yet', desc: `This quiz is scheduled to start on <strong>${startDate.toLocaleString()}</strong>. Please check back at the scheduled start time.` });
+      return;
+    }
+  }
+
   if (quiz.deadline) {
     const deadlineDate = new Date(quiz.deadline);
-    if (!isNaN(deadlineDate.getTime()) && new Date() > deadlineDate) {
+    if (!isNaN(deadlineDate.getTime()) && serverNow > deadlineDate) {
       renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz deadline passed', desc: `The deadline to attempt this quiz was <strong>${deadlineDate.toLocaleString()}</strong>. New attempts are closed.` });
       return;
     }
@@ -588,8 +598,9 @@ async function submitQuiz(force = false) {
     questionResults.push({ question: q.text, userAnswer: answers[i], correctAnswer: q.correctAnswer, correct, points: pts, options: q.options, type: q.type });
   });
 
+  const passScore = quiz.passingPercent !== undefined && quiz.passingPercent !== null && quiz.passingPercent !== '' ? Number(quiz.passingPercent) : 50;
   const percent = totalPoints > 0 ? Math.round((score / totalPoints) * 100) : 0;
-  const passed = percent >= (quiz.passingPercent || 50);
+  const passed = percent >= passScore;
   const timeTaken = Math.max(1, (quiz.timerMinutes * 60) - timeLeft);
   const submission = { id: generateId(), quizId: quiz.id, participant, answers, score, totalPoints, percent, passed, timeTaken, questionResults, submittedAt: new Date().toISOString() };
 
@@ -623,6 +634,10 @@ function renderResults(submission) {
 
   (async () => {
     const pct = submission.percent || 0;
+    const passScore = quiz.passingPercent !== undefined && quiz.passingPercent !== null && quiz.passingPercent !== '' ? Number(quiz.passingPercent) : 50;
+    const isPassed = pct >= passScore;
+    submission.passed = isPassed;
+
     const R = 60;
     const CIRC = 2 * Math.PI * R;
     const offset = CIRC * (1 - pct / 100);
@@ -632,7 +647,7 @@ function renderResults(submission) {
       certTemplate = quiz.certificateTemplateId ? await getCertTemplate(quiz.certificateTemplateId) : null;
     } catch { }
 
-    const showCert = submission.passed && certTemplate;
+    const showCert = isPassed && certTemplate;
     const isPptx = certTemplate?.type === 'pptx';
     const showSummary = quiz.showSummary !== false;
     const showAnswers = quiz.showCorrectAnswers !== false;

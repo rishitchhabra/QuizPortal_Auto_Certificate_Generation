@@ -338,6 +338,10 @@ app.get('/api/health', asyncHandler(async (req, res) => {
   res.json({ ok: true, database: 'postgres' });
 }));
 
+app.get('/api/time', (req, res) => {
+  res.json({ now: new Date().toISOString(), timestamp: Date.now() });
+});
+
 function ensureArray(val) {
   if (Array.isArray(val)) return val;
   if (typeof val === 'string') {

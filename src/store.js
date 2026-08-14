@@ -25,6 +25,17 @@ export async function apiRequest(path, options = {}) {
   return response.json();
 }
 
+export async function getServerTime() {
+  try {
+    const data = await apiRequest('/api/time');
+    if (data?.timestamp) return new Date(data.timestamp);
+    if (data?.now) return new Date(data.now);
+  } catch (e) {
+    console.warn('Failed to fetch server time, using local fallback:', e);
+  }
+  return new Date();
+}
+
 export async function apiRequestRaw(path, options = {}) {
   const headers = new Headers(options.headers || {});
   const session = getAuthSession();

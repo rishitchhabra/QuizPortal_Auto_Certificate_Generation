@@ -225,9 +225,6 @@ function renderQuestionsTab() {
     <div class="editor-layout">
       <aside class="editor-sidebar">
         <div class="sidebar-card">
-          <div class="sidebar-head">
-            <span class="sidebar-title">Questions (${total})</span>
-          </div>
           <div class="sidebar-search">
             <div class="search-wrap">${Icon('search', 15)}<input class="input q-search" type="text" placeholder="Search questions…" style="height:36px" aria-label="Search questions"></div>
           </div>
@@ -413,7 +410,8 @@ function renderEvaluationTab() {
         <div class="panel">
           ${Field({ label: 'Timer limit (minutes)', htmlFor: 'quiz-timer', control: Inp({ type: 'number', id: 'quiz-timer', value: currentQuiz.timerMinutes, min: '1', max: '300' }) })}
           ${Field({ label: 'Passing score (%)', htmlFor: 'quiz-passing', hint: 'Minimum percentage required to earn a certificate.', control: Inp({ type: 'number', id: 'quiz-passing', value: currentQuiz.passingPercent, min: '0', max: '100' }) })}
-          ${Field({ label: 'Deadline to start (optional)', htmlFor: 'quiz-deadline', hint: 'Participants can no longer start after this date and time. Leave blank for none.', control: Inp({ type: 'datetime-local', id: 'quiz-deadline', value: currentQuiz.deadline || '' }) })}
+          ${Field({ label: 'Start time / Available from (optional)', htmlFor: 'quiz-start-time', hint: 'Participants cannot start before this date and time (checked against master server timer). Leave blank for immediate access.', control: Inp({ type: 'datetime-local', id: 'quiz-start-time', value: currentQuiz.startTime || '' }) })}
+          ${Field({ label: 'Deadline to start (optional)', htmlFor: 'quiz-deadline', hint: 'Participants can no longer start after this date and time (checked against master server timer). Leave blank for none.', control: Inp({ type: 'datetime-local', id: 'quiz-deadline', value: currentQuiz.deadline || '' }) })}
         </div>
       </div>
 
@@ -572,6 +570,7 @@ function bindEvents(app) {
   app.querySelector('#quiz-instructions')?.addEventListener('input', e => { currentQuiz.instructions = e.target.value; markDirty(); });
   app.querySelector('#quiz-timer')?.addEventListener('input', e => { currentQuiz.timerMinutes = parseInt(e.target.value) || 0; markDirty(); });
   app.querySelector('#quiz-passing')?.addEventListener('input', e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); });
+  app.querySelector('#quiz-start-time')?.addEventListener('input', e => { currentQuiz.startTime = e.target.value || ''; markDirty(); });
   app.querySelector('#quiz-deadline')?.addEventListener('input', e => { currentQuiz.deadline = e.target.value || ''; markDirty(); });
   app.querySelector('#quiz-cert-template')?.addEventListener('change', e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); });
   app.querySelector('#quiz-auth-mode')?.addEventListener('change', e => {
