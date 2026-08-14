@@ -163,22 +163,42 @@ export async function saveAdminConfig(cfg) {
   return apiRequest('/api/admin-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) });
 }
 
-// Auth Session
+// Auth Session (Persisted across tabs & browser restarts)
 export function getAuthSession() {
-  try { const r = sessionStorage.getItem(AUTH_KEY); return r ? JSON.parse(r) : null; }
-  catch { return null; }
+  try {
+    const r = localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(AUTH_KEY);
+    return r ? JSON.parse(r) : null;
+  } catch {
+    return null;
+  }
 }
-export function setAuthSession(data) { sessionStorage.setItem(AUTH_KEY, JSON.stringify(data)); }
-export function clearAuthSession() { sessionStorage.removeItem(AUTH_KEY); }
+export function setAuthSession(data) {
+  try { localStorage.setItem(AUTH_KEY, JSON.stringify(data)); } catch {}
+  try { sessionStorage.setItem(AUTH_KEY, JSON.stringify(data)); } catch {}
+}
+export function clearAuthSession() {
+  try { localStorage.removeItem(AUTH_KEY); } catch {}
+  try { sessionStorage.removeItem(AUTH_KEY); } catch {}
+}
 
 // Google User Session (for quiz takers)
 const GUSER_KEY = 'sciquiz_guser';
 export function getGoogleUser() {
-  try { const r = sessionStorage.getItem(GUSER_KEY); return r ? JSON.parse(r) : null; }
-  catch { return null; }
+  try {
+    const r = localStorage.getItem(GUSER_KEY) || sessionStorage.getItem(GUSER_KEY);
+    return r ? JSON.parse(r) : null;
+  } catch {
+    return null;
+  }
 }
-export function setGoogleUser(u) { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); }
-export function clearGoogleUser() { sessionStorage.removeItem(GUSER_KEY); }
+export function setGoogleUser(u) {
+  try { localStorage.setItem(GUSER_KEY, JSON.stringify(u)); } catch {}
+  try { sessionStorage.setItem(GUSER_KEY, JSON.stringify(u)); } catch {}
+}
+export function clearGoogleUser() {
+  try { localStorage.removeItem(GUSER_KEY); } catch {}
+  try { sessionStorage.removeItem(GUSER_KEY); } catch {}
+}
 
 // Students (master database)
 export async function getUsers(filters = {}) {

@@ -54,8 +54,11 @@ export async function renderReports(app, params) {
               <a href="#/reports/${q.id}" class="card card-pad card-hover" style="text-decoration:none; color:var(--text); display:block">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
                   <span class="stat-icon stat-${q.isPublished ? 'green' : 'gray'}" style="width:36px; height:36px; flex:none">${Icon(q.isPublished ? 'list-checks' : 'file-text', 16)}</span>
-                  <div style="min-width:0">
-                    <div style="font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(q.title || 'Untitled')}</div>
+                  <div style="min-width:0; flex:1">
+                    <div style="font-weight:700; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:6px; flex-wrap:wrap">
+                      <span>${escapeHtml(q.title || 'Untitled')}</span>
+                      ${q.nickname ? `<span class="badge badge-purple" style="font-weight:600; font-size:10px; padding:2px 6px; display:inline-flex; align-items:center; gap:3px">${Icon('tag', 10)} ${escapeHtml(q.nickname)}</span>` : ''}
+                    </div>
                     <div class="xs muted">${q.questions?.length || 0} questions</div>
                   </div>
                 </div>
@@ -86,7 +89,10 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
         <div class="page-head" style="margin-bottom:20px">
           <a href="#/reports" class="btn btn-ghost btn-sm" style="margin-bottom:12px">${Icon('arrow-left', 14)}<span>All Reports</span></a>
           <div class="eyebrow">${Icon('bar-chart', 14)}<span>Report</span></div>
-          <h1 class="page-title" style="font-size:28px">${escapeHtml(quiz.title || 'Quiz report')}</h1>
+          <h1 class="page-title" style="font-size:28px; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+            <span>${escapeHtml(quiz.title || 'Quiz report')}</span>
+            ${quiz.nickname ? `<span class="badge badge-purple" style="font-weight:600; font-size:12px; display:inline-flex; align-items:center; gap:4px">${Icon('tag', 12)} ${escapeHtml(quiz.nickname)}</span>` : ''}
+          </h1>
         </div>
         ${reportSkeleton()}
       </div>

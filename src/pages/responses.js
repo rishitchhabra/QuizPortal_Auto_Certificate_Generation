@@ -43,7 +43,10 @@ export async function renderResponses(app, params) {
           <div>
             <a href="#/admin" class="btn btn-ghost btn-sm" style="margin-bottom:12px">${Icon('arrow-left', 14)}<span>Back to Dashboard</span></a>
             <div class="eyebrow">${Icon('users', 14)}<span>Participant Analytics</span></div>
-            <h1 class="page-title" style="font-size:28px">${escapeHtml(quiz.title)}</h1>
+            <h1 class="page-title" style="font-size:28px; display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+              <span>${escapeHtml(quiz.title)}</span>
+              ${quiz.nickname ? `<span class="badge badge-purple" style="font-weight:600; font-size:12px; display:inline-flex; align-items:center; gap:4px">${Icon('tag', 12)} ${escapeHtml(quiz.nickname)}</span>` : ''}
+            </h1>
             <p class="page-sub" style="margin-top:6px; font-size:15px">${submissions.length} response${submissions.length === 1 ? '' : 's'} · ${quiz.questions?.length || 0} questions</p>
           </div>
           <div class="page-head-actions">
