@@ -3179,23 +3179,20 @@ select {
 }
 
 .editor-layout {
-  position: relative;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 24px;
+  align-items: start;
   margin-top: 24px;
 }
 
 /* Sidebar */
 .editor-sidebar {
-  position: fixed;
-  top: calc(var(--nav-h) + 120px);
-  width: 300px;
-  height: calc(100vh - var(--nav-h) - 136px);
-  z-index: 80;
+  position: sticky;
+  top: calc(var(--nav-h) + 148px);
+  max-height: calc(100vh - var(--nav-h) - 165px);
   display: flex;
   flex-direction: column;
-}
-
-.editor-main {
-  margin-left: 324px;
 }
 
 .sidebar-card {
@@ -3207,6 +3204,7 @@ select {
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-height: calc(100vh - var(--nav-h) - 165px);
 }
 
 .sidebar-head,
