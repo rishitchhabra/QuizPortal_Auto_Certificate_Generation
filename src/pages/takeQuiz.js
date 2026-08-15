@@ -823,10 +823,12 @@ function renderResults(submission) {
     }
 
     if (showCert && isPptx) {
-      app.querySelector('#btn-download-pptx-cert')?.addEventListener('click', () => downloadCachedCert());
+      app.querySelector('#btn-download-pptx-cert')?.addEventListener('click', () => downloadCachedCertAsImage());
+      app.querySelector('#btn-download-pptx-cert-pdf')?.addEventListener('click', () => downloadCachedCertPDF());
       if (pptxNeedPdfJs) renderPdfCertPreview();
     } else if (showCert && !isPptx) {
-      app.querySelector('#btn-download-cert')?.addEventListener('click', () => downloadCertPDF());
+      app.querySelector('#btn-download-cert-img')?.addEventListener('click', () => downloadCertAsImage());
+      app.querySelector('#btn-download-cert-pdf')?.addEventListener('click', () => downloadCertAsPDF());
     }
   })();
 }
@@ -925,7 +927,8 @@ function designerCertPanelHtml(submission, template) {
         <div id="cert-render" style="${style}">${inner}</div>
       </div>
       <div class="cert-toolbar">
-        <button class="btn btn-primary" id="btn-download-cert">${Icon('download', 15)}<span>Download PDF Certificate</span></button>
+        <button class="btn btn-primary" id="btn-download-cert-img">${Icon('download', 15)}<span>Save as Image</span></button>
+        <button class="btn btn-secondary" id="btn-download-cert-pdf">${Icon('file-text', 15)}<span>Download PDF</span></button>
       </div>
     </div>`;
 }
@@ -959,19 +962,66 @@ function resultSkeleton() {
     </div>`;
 }
 
-async function downloadCertPDF() {
+async function saveImageToGallery(canvas, filename) {
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Could not generate image');
+
+  // Mobile: use Web Share API to trigger native "Save to Photos" flow
+  if (navigator.canShare && navigator.share) {
+    const file = new File([blob], filename, { type: 'image/png' });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename.replace('.png', '') });
+        showToast('Certificate shared / saved!');
+        return;
+      } catch (shareErr) {
+        if (shareErr.name === 'AbortError') { return; } // user cancelled
+        // Fall through to download fallback
+      }
+    }
+  }
+
+  // Desktop / fallback: trigger download as .png
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Certificate saved as image');
+}
+
+async function downloadCertAsImage() {
+  try {
+    const { default: html2canvas } = await import('html2canvas-pro');
+    const certEl = document.getElementById('cert-render');
+    if (!certEl) return;
+    showToast('Generating certificate image…');
+    const canvas = await html2canvas(certEl, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+    const safeName = (participant.name || 'Participant').replace(/[^a-zA-Z0-9 _-]/g, '');
+    await saveImageToGallery(canvas, `Certificate_${safeName}.png`);
+  } catch (e) {
+    console.error(e);
+    showToast('Download error: ' + (e.message || 'Could not generate image'), 'error');
+  }
+}
+
+async function downloadCertAsPDF() {
   try {
     const { default: html2canvas } = await import('html2canvas-pro');
     const { jsPDF } = await import('jspdf');
     const certEl = document.getElementById('cert-render');
     if (!certEl) return;
     showToast('Generating PDF certificate…');
-    const canvas = await html2canvas(certEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+    const canvas = await html2canvas(certEl, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [900, 636] });
     pdf.addImage(imgData, 'PNG', 0, 0, 900, 636);
-    pdf.save(`Certificate_${participant.name || 'Participant'}.pdf`);
-    showToast('Certificate downloaded');
+    const safeName = (participant.name || 'Participant').replace(/[^a-zA-Z0-9 _-]/g, '');
+    pdf.save(`Certificate_${safeName}.pdf`);
+    showToast('Certificate PDF downloaded');
   } catch (e) {
     console.error(e);
     showToast('Download error: ' + (e.message || 'Could not generate PDF'), 'error');
@@ -1048,12 +1098,46 @@ function pptxCertPanelHtml(built, template) {
       <p class="muted sm" style="margin-top:4px">Generated from template: ${escapeHtml(template.name || 'Certificate')}</p>
       ${built.html}
       <div class="cert-toolbar">
-        <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Download Certificate (PDF)</span></button>
+        <button class="btn btn-primary" id="btn-download-pptx-cert">${Icon('download', 15)}<span>Save Certificate as Image</span></button>
+        <button class="btn btn-secondary" id="btn-download-pptx-cert-pdf">${Icon('file-text', 15)}<span>Download PDF</span></button>
       </div>
     </div>`;
 }
 
-function downloadCachedCert() {
+async function downloadCachedCertAsImage() {
+  showToast('Converting certificate to image…');
+  try {
+    const previewImg = document.querySelector('.cert-panel img[alt="Certificate preview"]');
+    const pdfCanvas = document.getElementById('pdf-cert-canvas');
+    let canvas;
+    if (previewImg && previewImg.naturalWidth > 0) {
+      canvas = document.createElement('canvas');
+      canvas.width = previewImg.naturalWidth;
+      canvas.height = previewImg.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(previewImg, 0, 0);
+    } else if (pdfCanvas && pdfCanvas.width > 0) {
+      canvas = pdfCanvas;
+    } else {
+      const { default: html2canvas } = await import('html2canvas-pro');
+      const wrapper = document.querySelector('.cert-panel div[style*="max-width:900px"]');
+      if (wrapper) {
+        canvas = await html2canvas(wrapper, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      }
+    }
+    if (canvas) {
+      const safeName = (participant.name || 'Participant').replace(/[^a-zA-Z0-9 _-]/g, '');
+      await saveImageToGallery(canvas, `Certificate_${safeName}.png`);
+      return;
+    }
+    downloadCachedCertPDF();
+  } catch (e) {
+    console.error('Image download error:', e);
+    downloadCachedCertPDF();
+  }
+}
+
+function downloadCachedCertPDF() {
   if (cachedCert?.blob) {
     const url = URL.createObjectURL(cachedCert.blob);
     const a = document.createElement('a');
@@ -1063,16 +1147,15 @@ function downloadCachedCert() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Certificate downloaded');
+    showToast('Certificate PDF downloaded');
   } else if (cachedCert?.downloadUrl) {
-    // Direct streaming download from the server.
     const a = document.createElement('a');
     a.href = cachedCert.downloadUrl;
     a.download = cachedCert.filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    showToast('Certificate download started');
+    showToast('Certificate PDF download started');
   }
 }
 
@@ -1111,25 +1194,26 @@ async function renderClosedQuizLogin(app, targetQuiz, message) {
     ${renderNavbar()}
     <div class="page fade-in">
       <div class="container-take" style="padding-top:24px">
-        <div class="quiz-panel" style="text-align:left">
+        <div class="quiz-panel" style="text-align:center">
           ${quizIntroHeader()}
 
           <div class="signin-promo ${subj.cls}" style="--subj:${subj.color}">
             <div class="signin-promo-bubbles"></div>
             <div class="signin-promo-inner">
-              <div class="signin-promo-icon" style="color: var(--amber)">${Icon('lock', 24)}</div>
-              <div class="signin-promo-title">Responses are closed</div>
-              <div class="signin-promo-sub" style="margin-bottom:20px">${escapeHtml(message)} <br><strong>If you have already attempted the quiz, enter your ID below to view your results and download your certificate.</strong></div>
+              <div class="signin-promo-icon" style="color: var(--amber)">${Icon('lock', 28)}</div>
+              <div class="signin-promo-title">Quiz closed</div>
+              <div class="signin-promo-sub" style="margin-bottom:20px">Already attempted? Enter your ID to view your result & certificate.</div>
 
               ${isUserIdAuth ? `
                 <form id="userid-retrieve-form" class="userid-form" novalidate style="width: 100%; max-width: 400px; margin: 0 auto">
-                  <input type="text" id="userid-retrieve-input" class="input input-lg" placeholder="Enter your User ID (e.g. aaravsharma291)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="User ID" style="text-align: center">
-                  <button type="submit" class="btn btn-primary btn-lg btn-block" style="justify-content:center; margin-top:12px">
-                    ${Icon('search', 16)}<span>View Result / Certificate</span>
+                  <input type="text" id="userid-retrieve-input" class="input input-lg" placeholder="Enter your User ID" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="User ID" style="text-align: center">
+                  <button type="submit" class="btn btn-primary btn-lg btn-block" id="btn-retrieve-submit" style="justify-content:center; margin-top:12px">
+                    ${Icon('arrow-right', 16)}<span>View My Result</span>
                   </button>
                   <p class="xs text-3" id="userid-retrieve-err" style="margin-top:12px; text-align:center; min-height:16px"></p>
                 </form>
               ` : `
+                <p class="xs text-3" style="margin-bottom:10px">Sign in with the Google account you used during the quiz.</p>
                 <div id="google-retrieve-container" class="google-btn-wrap" style="display: flex; justify-content: center"></div>
                 <p class="xs text-3" id="google-retrieve-err" style="margin-top:14px; text-align:center; min-height:16px"></p>
               `}
@@ -1145,22 +1229,23 @@ async function renderClosedQuizLogin(app, targetQuiz, message) {
     const form = app.querySelector('#userid-retrieve-form');
     const input = app.querySelector('#userid-retrieve-input');
     const errEl = app.querySelector('#userid-retrieve-err');
-    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitBtn = app.querySelector('#btn-retrieve-submit');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const raw = input.value.trim().toLowerCase();
       if (!raw) { errEl.textContent = 'Please enter your User ID.'; errEl.style.color = 'var(--red)'; return; }
-      errEl.textContent = 'Checking…';
-      errEl.style.color = 'var(--text-2)';
+      errEl.textContent = '';
       submitBtn.disabled = true;
+      submitBtn.innerHTML = `${Icon('loader', 16)}<span>Loading…</span>`;
 
       try {
         const student = (await verifyUserId(raw))?.user || null;
         if (!student) {
-          errEl.textContent = 'No student found with that User ID. Check with your teacher.';
+          errEl.innerHTML = '❌ This User ID was not found. Please check and try again.';
           errEl.style.color = 'var(--red)';
           submitBtn.disabled = false;
+          submitBtn.innerHTML = `${Icon('arrow-right', 16)}<span>View My Result</span>`;
           return;
         }
 
@@ -1172,14 +1257,16 @@ async function renderClosedQuizLogin(app, targetQuiz, message) {
           participant.classSection = student.classSection;
           renderResults(existing[0]);
         } else {
-          errEl.textContent = 'No submission was found for this User ID.';
-          errEl.style.color = 'var(--red)';
+          errEl.innerHTML = '⚠️ You have not attempted this quiz. This quiz is no longer accepting new responses.';
+          errEl.style.color = 'var(--amber)';
           submitBtn.disabled = false;
+          submitBtn.innerHTML = `${Icon('arrow-right', 16)}<span>View My Result</span>`;
         }
       } catch (err) {
         errEl.textContent = err.message || 'Something went wrong. Please try again.';
         errEl.style.color = 'var(--red)';
         submitBtn.disabled = false;
+        submitBtn.innerHTML = `${Icon('arrow-right', 16)}<span>View My Result</span>`;
       }
     });
   } else {
@@ -1192,7 +1279,7 @@ async function renderClosedQuizLogin(app, targetQuiz, message) {
     }
 
     const onSignIn = async (user) => {
-      errEl.textContent = 'Fetching submissions...';
+      errEl.textContent = 'Loading your result…';
       errEl.style.color = 'var(--text-2)';
       try {
         const existing = await getSubmissionsByEmail(targetQuiz.id, user.email).catch(() => []);
@@ -1202,8 +1289,8 @@ async function renderClosedQuizLogin(app, targetQuiz, message) {
           participant.email = user.email;
           renderResults(existing[0]);
         } else {
-          errEl.textContent = 'No attempt was found for your Google account.';
-          errEl.style.color = 'var(--red)';
+          errEl.innerHTML = '⚠️ You have not attempted this quiz. This quiz is no longer accepting new responses.';
+          errEl.style.color = 'var(--amber)';
         }
       } catch (err) {
         errEl.textContent = err.message || 'Something went wrong. Please try again.';
