@@ -1,7 +1,8 @@
-import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches, uploadQuestionImage } from '../store.js';
+import { saveQuiz, getQuiz, generateId, getAllCertTemplates, getBatches, uploadQuestionImage, uploadQuizBanner } from '../store.js';
 import { Icon, Badge, Field, Inp, Txta, Sel, Toggle, EmptyState } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
 import { renderNavbar, showToast, escapeHtml, copyTextToClipboard, bindNavbar, renderAccessDenied, batchPickerHTML, bindBatchPicker } from '../utils.js';
+import { BANNER_TEMPLATES } from '../bannerTemplates.js';
 
 let currentQuiz = null;
 let activeTab = 'index';       // index | questions | evaluation | certificate | publishing
@@ -39,6 +40,7 @@ export async function renderQuizBuilder(app, params) {
       title: 'Untitled Quiz',
       nickname: '',
       description: '',
+      bannerUrl: '',
       timerMinutes: 30,
       passingPercent: 50,
       deadline: '',
@@ -173,6 +175,89 @@ function renderGeneralTab() {
 
           ${Toggle({ id: 'quiz-collect-phone', checked: currentQuiz.collectPhone, label: 'Collect phone number', hint: 'Ask participants for their phone before starting.' })}
           ${Toggle({ id: 'quiz-collect-org', checked: currentQuiz.collectOrg, label: 'Collect institution', hint: 'Ask for the participant\'s school or institution.' })}
+        </div>
+      </div>
+    </div>
+
+    <!-- Quiz Banner & Link Share Image Section -->
+    <div class="q-editor-card" style="margin-top:20px">
+      <div class="q-editor-top">
+        <div class="q-editor-title">Quiz Banner &amp; Link Share Preview Image</div>
+      </div>
+      <div class="panel">
+        <p class="muted sm" style="margin-bottom:16px">
+          Map a banner to this quiz. When you share the quiz link on WhatsApp, Telegram, Twitter, or Slack, this banner image will pop up automatically as the link preview image.
+        </p>
+
+        <div style="display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; flex-wrap:wrap">
+          <div>
+            <label class="field-label" style="margin-bottom:8px">Quiz Banner</label>
+            <div id="quiz-banner-preview-box" style="position:relative; width:100%; height:180px; border-radius:12px; overflow:hidden; border:2px dashed var(--border); background:var(--bg-2); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px">
+              ${currentQuiz.bannerUrl ? `
+                <img src="${escapeHtml(currentQuiz.bannerUrl)}" alt="Quiz banner" style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0">
+                <button class="btn btn-danger btn-sm" id="btn-remove-banner" style="position:absolute; top:12px; right:12px; z-index:2; box-shadow:0 4px 12px rgba(0,0,0,0.3)">${Icon('trash', 14)} Remove Banner</button>
+              ` : `
+                <div style="margin-bottom:10px; color:var(--text-3)">${Icon('image', 36)}</div>
+                <div style="font-weight:600; font-size:14px; margin-bottom:4px">No banner mapped</div>
+                <div class="xs muted" style="margin-bottom:12px">Upload your JPG or PNG image, or select a preset template below</div>
+                <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+                  ${Icon('upload', 14)} <span>Upload Banner (JPG/PNG)</span>
+                  <input type="file" class="quiz-banner-file-input" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml" style="display:none">
+                </label>
+              `}
+            </div>
+            ${currentQuiz.bannerUrl ? `
+              <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center">
+                <span class="xs muted">Custom banner mapped</span>
+                <label class="btn btn-ghost btn-xs" style="cursor:pointer">
+                  ${Icon('upload', 12)} <span>Change Image</span>
+                  <input type="file" class="quiz-banner-file-input" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml" style="display:none">
+                </label>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Social Share Card Live Preview -->
+          <div>
+            <label class="field-label" style="margin-bottom:8px">Link Share Card Preview</label>
+            <div class="card" style="padding:12px; background:var(--bg-2); border:1px solid var(--border); border-radius:12px">
+              <div class="xs muted" style="margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px">Link Popup Card (WhatsApp / Telegram / Twitter)</div>
+              <div style="border-radius:10px; overflow:hidden; border:1px solid var(--border); background:var(--card-bg)">
+                <div style="height:110px; background:var(--bg-3); overflow:hidden; position:relative">
+                  ${currentQuiz.bannerUrl ? `
+                    <img src="${escapeHtml(currentQuiz.bannerUrl)}" alt="Share preview" style="width:100%; height:100%; object-fit:cover">
+                  ` : `
+                    <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:700; background:linear-gradient(135deg, #4f46e5, #7c3aed)">
+                      Quiz Banner Image
+                    </div>
+                  `}
+                </div>
+                <div style="padding:10px 12px">
+                  <div style="font-size:10.5px; color:var(--primary); font-weight:700; text-transform:uppercase">GYAN.PORTAL.EDU · QUIZ</div>
+                  <div style="font-size:13px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px">${escapeHtml(quizTitle())}</div>
+                  <div style="font-size:11.5px; color:var(--text-2); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; margin-top:2px">${escapeHtml(currentQuiz.description || 'Attempt this certified online quiz on Gyan Portal.')}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Banner Templates Gallery -->
+        <div style="margin-top:24px">
+          <label class="field-label" style="margin-bottom:8px">Or Pick a Banner Template</label>
+          <div class="grid grid-3" style="gap:12px">
+            ${BANNER_TEMPLATES.map(t => `
+              <div class="banner-template-card ${currentQuiz.bannerUrl === t.url ? 'active' : ''}" data-url="${escapeHtml(t.url)}" style="cursor:pointer; border-radius:10px; overflow:hidden; border:2px solid ${currentQuiz.bannerUrl === t.url ? 'var(--primary)' : 'var(--border)'}; background:var(--card-bg); transition:all 0.15s ease">
+                <div style="height:76px; width:100%; overflow:hidden; position:relative">
+                  <img src="${escapeHtml(t.url)}" alt="${escapeHtml(t.name)}" style="width:100%; height:100%; object-fit:cover">
+                </div>
+                <div style="padding:8px 10px; display:flex; justify-content:space-between; align-items:center">
+                  <span style="font-size:12px; font-weight:600">${escapeHtml(t.name)}</span>
+                  ${currentQuiz.bannerUrl === t.url ? Badge('Mapped', { tone: 'green' }) : `<span class="xs muted">${escapeHtml(t.category)}</span>`}
+                </div>
+              </div>
+            `).join('')}
+          </div>
         </div>
       </div>
     </div>
@@ -633,6 +718,50 @@ function bindEvents(app) {
   bindToggle(app, 'quiz-shuffle-options', 'shuffleOptions');
   bindToggle(app, 'quiz-show-summary', 'showSummary');
   bindToggle(app, 'quiz-show-answers', 'showCorrectAnswers');
+
+  // Quiz Banner File Upload (.jpg, .png, .webp, .gif)
+  app.querySelectorAll('.quiz-banner-file-input').forEach(input => {
+    input.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('Banner file size must be under 10MB', 'error');
+        return;
+      }
+      showToast('Uploading banner image…', 'info');
+      try {
+        const url = await uploadQuizBanner(file);
+        currentQuiz.bannerUrl = url;
+        markDirty();
+        showToast('Banner image mapped to quiz');
+        renderPage(app);
+      } catch (err) {
+        showToast(err.message || 'Failed to upload banner image', 'error');
+      }
+    });
+  });
+
+  // Remove Banner
+  const btnRemoveBanner = app.querySelector('#btn-remove-banner');
+  if (btnRemoveBanner) {
+    btnRemoveBanner.addEventListener('click', () => {
+      currentQuiz.bannerUrl = '';
+      markDirty();
+      showToast('Banner removed');
+      renderPage(app);
+    });
+  }
+
+  // Banner Template Selection
+  app.querySelectorAll('.banner-template-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const url = card.dataset.url;
+      currentQuiz.bannerUrl = url;
+      markDirty();
+      showToast('Banner template mapped to quiz');
+      renderPage(app);
+    });
+  });
 
   // Custom fields
   const btnAddCustom = app.querySelector('#btn-add-custom-field');

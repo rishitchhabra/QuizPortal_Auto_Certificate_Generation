@@ -23,12 +23,14 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
-// Ensure uploads directory exists for PPTX templates
+// Ensure uploads directory exists for PPTX templates, question images, and quiz banners
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'pptx-templates');
 const QUESTION_IMAGES_DIR = path.join(process.cwd(), 'uploads', 'question-images');
+const BANNER_IMAGES_DIR = path.join(process.cwd(), 'uploads', 'banner-images');
 const TMP_DIR = path.join(process.cwd(), 'tmp');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(QUESTION_IMAGES_DIR)) fs.mkdirSync(QUESTION_IMAGES_DIR, { recursive: true });
+if (!fs.existsSync(BANNER_IMAGES_DIR)) fs.mkdirSync(BANNER_IMAGES_DIR, { recursive: true });
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
 // Multer for PPTX file uploads
@@ -41,6 +43,27 @@ const pptxUpload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only .pptx files are allowed'));
+    }
+  }
+});
+
+// Multer for Quiz Banner uploads (.jpg, .png, .webp, .gif)
+const bannerUpload = multer({
+  storage: multer.diskStorage({
+    destination: BANNER_IMAGES_DIR,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const name = `banner_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
+      cb(null, name);
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPG, PNG, WEBP, GIF, or SVG images are allowed for quiz banners'));
     }
   }
 });
@@ -1230,10 +1253,66 @@ app.delete('/api/tables/:name', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Serve question images from uploads/question-images
+// Upload Quiz Banner Endpoint
+app.post('/api/upload-banner', bannerUpload.single('banner'), asyncHandler(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image file uploaded' });
+  const url = `/static/banner-images/${req.file.filename}`;
+  res.json({ ok: true, url });
+}));
+
+// Serve question & banner images from uploads
 app.use('/static/question-images', express.static(QUESTION_IMAGES_DIR));
+app.use('/static/banner-images', express.static(BANNER_IMAGES_DIR));
 app.use('/static', express.static(path.join(process.cwd(), 'public')));
 app.use(express.static(path.join(process.cwd(), 'dist')));
+
+// Serve dynamic Open Graph meta tags for shared quiz links
+app.get(['/take/:quizId', '/share/:quizId', '/quiz/:quizId'], asyncHandler(async (req, res) => {
+  const quizId = req.params.quizId;
+  const indexPath = path.join(process.cwd(), 'dist', 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    return res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
+  }
+
+  let html = fs.readFileSync(indexPath, 'utf8');
+  if (quizId) {
+    try {
+      const qRes = await pool.query('SELECT data FROM quizzes WHERE id = $1', [quizId]);
+      if (qRes.rows.length > 0) {
+        const quiz = typeof qRes.rows[0].data === 'string' ? JSON.parse(qRes.rows[0].data) : qRes.rows[0].data;
+        if (quiz) {
+          const title = (quiz.title || 'Quiz') + ' — Gyan International School';
+          const desc = quiz.description || 'Attempt this quiz on Gyan International School Assessment Portal.';
+          let bannerUrl = quiz.bannerUrl || quiz.banner || '';
+          if (bannerUrl && bannerUrl.startsWith('/')) {
+            const host = req.get('host') || 'localhost:3000';
+            const protocol = req.protocol || 'http';
+            bannerUrl = `${protocol}://${host}${bannerUrl}`;
+          }
+
+          const ogMeta = `
+    <title>${title}</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${desc}" />
+    ${bannerUrl ? `<meta property="og:image" content="${bannerUrl}" />` : ''}
+    ${bannerUrl ? `<meta property="og:image:width" content="1200" />` : ''}
+    ${bannerUrl ? `<meta property="og:image:height" content="630" />` : ''}
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${desc}" />
+    ${bannerUrl ? `<meta name="twitter:image" content="${bannerUrl}" />` : ''}
+          `;
+          html = html.replace('</head>', `${ogMeta}</head>`);
+        }
+      }
+    } catch (e) {
+      console.error('Error serving dynamic quiz OG meta tags:', e);
+    }
+  }
+  res.send(html);
+}));
+
 app.get('*', (req, res) => res.sendFile(path.join(process.cwd(), 'dist', 'index.html')));
 
 app.use((error, req, res, next) => {

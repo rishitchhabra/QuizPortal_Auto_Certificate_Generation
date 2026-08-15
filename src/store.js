@@ -270,6 +270,31 @@ export async function uploadQuestionImage(file) {
   return response.json();
 }
 
+// Quiz banner image upload (.jpg, .png, .webp, .gif)
+export async function uploadQuizBanner(file) {
+  const formData = new FormData();
+  formData.append('banner', file);
+  const headers = new Headers();
+  const session = getAuthSession();
+  if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
+  try {
+    const response = await fetch(`${SERVER_BASE}/api/upload-banner`, { method: 'POST', headers, body: formData });
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.url) return data.url;
+    }
+  } catch (e) {
+    console.warn('Server banner upload failed, converting to Data URL fallback:', e);
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
 // Reports
 export async function getQuizReport(quizId) {
   return apiRequest(`/api/reports/${quizId}`);

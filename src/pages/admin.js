@@ -637,6 +637,7 @@ function renderQuizRow(quiz, subsCount, can = {}) {
             <div class="quiz-title" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
               <span>${escapeHtml(title)}</span>
               ${quiz.nickname ? `<span class="badge badge-purple" style="font-weight:600; font-size:11px; display:inline-flex; align-items:center; gap:3px">${Icon('tag', 11)} ${escapeHtml(quiz.nickname)}</span>` : ''}
+              ${quiz.bannerUrl ? `<span class="badge badge-blue" style="font-weight:600; font-size:10px; display:inline-flex; align-items:center; gap:3px">${Icon('image', 10)} Banner</span>` : ''}
             </div>
             <div class="quiz-desc-sub">${escapeHtml(desc)}</div>
             ${unansCount > 0 ? `<div style="font-size:12px; font-weight:600; color:var(--red, #ef4444); margin-top:3px; display:inline-flex; align-items:center; gap:4px">${Icon('alert-circle', 12)} <span>${unansCount} question${unansCount === 1 ? '' : 's'} not answered</span></div>` : ''}

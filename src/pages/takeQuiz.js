@@ -56,6 +56,16 @@ export async function renderTakeQuiz(app, params) {
     return;
   }
 
+  if (quiz.bannerUrl) {
+    let ogImg = document.querySelector('meta[property="og:image"]');
+    if (!ogImg) {
+      ogImg = document.createElement('meta');
+      ogImg.setAttribute('property', 'og:image');
+      document.head.appendChild(ogImg);
+    }
+    ogImg.setAttribute('content', quiz.bannerUrl);
+  }
+
   answers = {}; quizStarted = false; quizSubmitted = false; participant = {};
   if (timerInterval) clearInterval(timerInterval);
   if (availabilityTimer) { clearTimeout(availabilityTimer); availabilityTimer = null; }
@@ -227,6 +237,11 @@ function quizIntroHeader() {
   const passingPercent = quiz.passingPercent !== undefined && quiz.passingPercent !== null && quiz.passingPercent !== '' ? Number(quiz.passingPercent) : 0;
   return `
     <div class="quiz-intro">
+      ${quiz.bannerUrl ? `
+        <div class="quiz-banner-hero" style="width:100%; height:180px; border-radius:14px; overflow:hidden; margin-bottom:20px; box-shadow:0 4px 16px rgba(0,0,0,0.12)">
+          <img src="${escapeHtml(quiz.bannerUrl)}" alt="${escapeHtml(quiz.title)} Banner" style="width:100%; height:100%; object-fit:cover">
+        </div>
+      ` : ''}
       <span class="quiz-intro-icon ${subj.cls}" style="--subj:${subj.color}">${Icon(subj.icon, 24)}</span>
       <div class="eyebrow">${Icon('graduation-cap', 13)}<span>Gyan International School · Assessment</span></div>
       <h1 class="quiz-intro-title">${escapeHtml(quiz.title)}</h1>
