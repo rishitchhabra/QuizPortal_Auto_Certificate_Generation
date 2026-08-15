@@ -517,12 +517,29 @@ app.get('/api/submissions', asyncHandler(async (req, res) => {
 app.post('/api/submissions', asyncHandler(async (req, res) => {
   const body = req.body || {};
 
-  // Server-side batch enforcement for userid-auth quizzes
+  // Server-side availability and batch enforcement for quizzes
   if (body.quizId) {
     const quizResult = await pool.query('SELECT * FROM quizzes WHERE id = $1', [body.quizId]);
     const quizRow = quizResult.rows[0];
     if (quizRow) {
+      if (quizRow.is_published === false || quizRow.is_published === 0) {
+        return res.status(403).json({ error: 'This quiz is currently inactive.' });
+      }
       const quizData = parseJson(quizRow.data, {});
+      const now = new Date();
+      if (quizData.startTime) {
+        const startDate = new Date(quizData.startTime);
+        if (!isNaN(startDate.getTime()) && now < startDate) {
+          return res.status(403).json({ error: 'This quiz has not started yet.' });
+        }
+      }
+      if (quizData.deadline) {
+        const deadlineDate = new Date(quizData.deadline);
+        if (!isNaN(deadlineDate.getTime()) && now > deadlineDate) {
+          return res.status(403).json({ error: 'The deadline to attempt this quiz has passed.' });
+        }
+      }
+
       if (quizData.authMode === 'userid') {
         const allowedBatches = Array.isArray(quizData.allowedBatches) ? quizData.allowedBatches.filter(Boolean) : [];
         if (allowedBatches.length === 0) {

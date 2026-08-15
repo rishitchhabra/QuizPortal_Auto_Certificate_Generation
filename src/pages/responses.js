@@ -1,7 +1,8 @@
 import { getQuiz, getSubmissions } from '../store.js';
-import { renderNavbar, formatTime, escapeHtml, bindNavbar, copyTextToClipboard, showToast, renderAccessDenied } from '../utils.js';
+import { renderNavbar, formatTime, escapeHtml, bindNavbar, copyTextToClipboard, showToast, renderAccessDenied, sortBatches } from '../utils.js';
 import { requireAdmin, hasPermission } from '../auth.js';
 import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
+import { exportLeaderboard } from '../exportUtils.js';
 
 export async function renderResponses(app, params) {
   if (!requireAdmin()) return;
@@ -18,6 +19,10 @@ export async function renderResponses(app, params) {
   const avgScore = submissions.length > 0 ? Math.round(submissions.reduce((s, sub) => s + sub.percent, 0) / submissions.length) : 0;
   const passCount = submissions.filter(s => s.passed).length;
   const avgTime = submissions.length > 0 ? Math.round(submissions.reduce((s, sub) => s + (sub.timeTaken || 0), 0) / submissions.length) : 0;
+
+  const distinctBatches = sortBatches(Array.from(new Set(submissions.map(s => {
+    return s.participant?.classSection || s.participant?.class || s.participant?.custom?.['Class / Grade'] || s.participant?.custom?.['Class'] || '';
+  }).filter(Boolean))));
 
   const leaderboard = [...submissions].sort((a, b) => {
     if (b.percent !== a.percent) return b.percent - a.percent;
@@ -68,10 +73,20 @@ export async function renderResponses(app, params) {
 
             <!-- Leaderboard -->
             <div class="card card-pad">
-              <div class="section-head" style="margin:0 0 18px">
+              <div class="section-head" style="margin:0 0 18px; flex-wrap:wrap; gap:10px">
                 <div>
                   <h2 class="section-title" style="font-size:18px">Leaderboard</h2>
                   <p class="section-sub">Ranked by score, then time</p>
+                </div>
+                <div class="flex gap-xs" style="display:flex; gap:6px; align-items:center">
+                  ${distinctBatches.length > 0 ? `
+                    <select class="input select select-sm" id="resp-batch-filter" style="width:auto; height:32px; font-size:12px; padding:0 8px" aria-label="Filter export by batch">
+                      <option value="">All batches</option>
+                      ${distinctBatches.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('')}
+                    </select>
+                  ` : ''}
+                  <button class="btn btn-secondary btn-sm" id="btn-export-resp-excel">${Icon('file-text', 13)}<span>Excel</span></button>
+                  <button class="btn btn-secondary btn-sm" id="btn-export-resp-pdf">${Icon('download', 13)}<span>PDF</span></button>
                 </div>
               </div>
               <div class="accordion">
@@ -184,6 +199,14 @@ export async function renderResponses(app, params) {
   `;
 
   bindNavbar(app);
+
+  const getActiveBatch = () => app.querySelector('#resp-batch-filter')?.value || '';
+  app.querySelector('#btn-export-resp-excel')?.addEventListener('click', () => {
+    exportLeaderboard({ submissions, quizTitle: quiz.title, batchFilter: getActiveBatch(), format: 'excel' });
+  });
+  app.querySelector('#btn-export-resp-pdf')?.addEventListener('click', () => {
+    exportLeaderboard({ submissions, quizTitle: quiz.title, batchFilter: getActiveBatch(), format: 'pdf' });
+  });
 
   // Accordion toggle
   app.querySelectorAll('.acc-header').forEach(h => {

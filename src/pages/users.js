@@ -2,6 +2,7 @@ import { getUsers, addUser, deleteUser, bulkDeleteUsers, getBatches, importUsers
 import { renderNavbar, showToast, escapeHtml, bindNavbar, renderAccessDenied, showModal, sortBatches } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState, SectionHead } from '../components.js';
 import { requireAdmin, hasPermission } from '../auth.js';
+import { exportStudentMaster } from '../exportUtils.js';
 import * as XLSX from 'xlsx';
 
 let filter = { classSection: '', search: '' };
@@ -13,8 +14,8 @@ export async function renderUsers(app) {
     return;
   }
 
-  const batches = await getBatches().catch(() => []);
   const users = await getUsers(filter).catch(() => []);
+  const batches = await getBatches().catch(() => []);
 
   const distinctClasses = Array.from(new Set(users.map(u => u.classSection || '')));
   const groupKeys = sortBatches(distinctClasses);
@@ -40,7 +41,8 @@ export async function renderUsers(app) {
           </div>
           <div class="page-head-actions">
             <a href="#/admin" class="btn btn-ghost btn-sm">${Icon('arrow-left', 14)}<span>Back</span></a>
-            <button class="btn btn-ghost btn-sm" id="btn-export">${Icon('download', 14)}<span>Export Excel</span></button>
+            <button class="btn btn-secondary btn-sm" id="btn-export-excel">${Icon('file-text', 14)}<span>Export Excel</span></button>
+            <button class="btn btn-secondary btn-sm" id="btn-export-pdf">${Icon('download', 14)}<span>Export PDF</span></button>
             ${canImport ? `<button class="btn btn-secondary btn-sm" id="btn-import">${Icon('upload', 14)}<span>Import Excel</span></button>` : ''}
             ${canAdd ? `<button class="btn btn-primary" id="btn-add-user">${Icon('plus', 15)}<span>Add Student</span></button>` : ''}
           </div>
@@ -77,6 +79,11 @@ export async function renderUsers(app) {
                 <div>
                   <h2 class="section-title" style="font-size:20px">${escapeHtml(cls || 'Unassigned')}</h2>
                   <p class="section-sub">${grouped[cls].length} students${cls ? '' : ' · no Class-Section set — add one by editing the student'}</p>
+                </div>
+                <div class="flex gap-xs" style="display:flex; gap:6px; align-items:center">
+                  <span class="xs muted" style="margin-right:2px; font-weight:600">Export batch:</span>
+                  <button class="btn btn-secondary btn-xs btn-export-user-batch" data-batch="${escapeHtml(cls)}" data-format="excel">${Icon('file-text', 12)}<span>Excel</span></button>
+                  <button class="btn btn-secondary btn-xs btn-export-user-batch" data-batch="${escapeHtml(cls)}" data-format="pdf">${Icon('download', 12)}<span>PDF</span></button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -129,7 +136,24 @@ export async function renderUsers(app) {
   applyFilters(app);
   if (canAdd) app.querySelector('#btn-add-user')?.addEventListener('click', () => openAddModal(app, batches));
   if (canImport) app.querySelectorAll('#btn-import').forEach(btn => btn.addEventListener('click', () => openImportModal(app)));
-  app.querySelector('#btn-export')?.addEventListener('click', () => exportExcel(app, users));
+  
+  const getActiveBatch = () => app.querySelector('#batch-filter')?.value || filter.classSection || '';
+  const getSearchQuery = () => app.querySelector('#user-search')?.value || filter.search || '';
+
+  app.querySelector('#btn-export-excel')?.addEventListener('click', () => {
+    exportStudentMaster({ usersList: users, batchFilter: getActiveBatch(), searchQuery: getSearchQuery(), format: 'excel' });
+  });
+  app.querySelector('#btn-export-pdf')?.addEventListener('click', () => {
+    exportStudentMaster({ usersList: users, batchFilter: getActiveBatch(), searchQuery: getSearchQuery(), format: 'pdf' });
+  });
+
+  app.querySelectorAll('.btn-export-user-batch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const b = btn.dataset.batch;
+      const fmt = btn.dataset.format;
+      exportStudentMaster({ usersList: users, batchFilter: b, searchQuery: '', format: fmt });
+    });
+  });
 
   // Single delete
   if (canDel) {
@@ -220,68 +244,7 @@ function applyFilters(app) {
   });
 }
 
-// Export the currently visible students to Excel. `users` is already batch-filtered
-// server-side; the active search text is re-applied client-side so the downloaded
-// file matches exactly what is shown on screen.
-function exportExcel(app, users) {
-  const searchInput = app.querySelector('#user-search');
-  const q = (searchInput?.value || '').trim().toLowerCase();
 
-  let rows = users;
-  if (q) {
-    rows = users.filter(u =>
-      (u.name || '').toLowerCase().includes(q) ||
-      (u.userId || '').toLowerCase().includes(q) ||
-      (u.classSection || '').toLowerCase().includes(q) ||
-      (u.parentMobile || '').toLowerCase().includes(q)
-    );
-  }
-
-  if (!rows.length) {
-    showToast('No students match the current filters', 'error');
-    return;
-  }
-
-  const stamp = new Date().toISOString().slice(0, 10);
-  const filename = `student_master${q ? '_filtered' : ''}_${stamp}.xlsx`;
-  const wb = XLSX.utils.book_new();
-
-  const headers = ['#', 'Name', 'User ID', 'Class-Section', "Parent's Mobile"];
-  const groupKeys = sortBatches(Array.from(new Set(rows.map(u => u.classSection || ''))));
-  const aoa = [];
-  const sectionRows = [];
-  const headerRows = [];
-
-  groupKeys.forEach(batch => {
-    const group = rows.filter(u => (u.classSection || '') === batch);
-    sectionRows.push(aoa.length);
-    aoa.push([`${batch || 'Unassigned'} — ${group.length} student${group.length === 1 ? '' : 's'}`]);
-    headerRows.push(aoa.length);
-    aoa.push(headers);
-    group.forEach((u, i) => aoa.push([i + 1, u.name, u.userId, u.classSection, u.parentMobile || '']));
-    aoa.push([]);
-  });
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{ wch: 6 }, { wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 18 }];
-  sectionRows.forEach(ri => styleSheetRow(ws, ri, { bold: true, fill: 'EEF0FF', color: '3B3FE0' }));
-  headerRows.forEach(ri => styleSheetRow(ws, ri, { bold: true, fill: 'F1F5F9' }));
-  XLSX.utils.book_append_sheet(wb, ws, 'Students');
-
-  XLSX.writeFile(wb, filename);
-  showToast(`Exported ${rows.length} student${rows.length === 1 ? '' : 's'} to Excel`);
-}
-
-function styleSheetRow(ws, r, { bold, fill, color }) {
-  for (let c = 0; c < 5; c++) {
-    const cell = ws[XLSX.utils.encode_cell({ r, c })];
-    if (!cell) continue;
-    cell.s = {
-      font: { bold, color: { rgb: color || '1E293B' } },
-      fill: fill ? { fgColor: { rgb: fill } } : undefined
-    };
-  }
-}
 
 function openAddModal(app, batches) {
   const modal = document.createElement('div');

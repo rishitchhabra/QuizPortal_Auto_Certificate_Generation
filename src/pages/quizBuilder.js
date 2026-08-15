@@ -418,6 +418,7 @@ function renderEvaluationTab() {
           ${Field({ label: 'Passing score (%)', htmlFor: 'quiz-passing', hint: 'Minimum percentage required to earn a certificate.', control: Inp({ type: 'number', id: 'quiz-passing', value: currentQuiz.passingPercent, min: '0', max: '100' }) })}
           ${Field({ label: 'Start time / Available from (optional)', htmlFor: 'quiz-start-time', hint: 'Participants cannot start before this date and time (checked against master server timer). Leave blank for immediate access.', control: Inp({ type: 'datetime-local', id: 'quiz-start-time', value: currentQuiz.startTime || '' }) })}
           ${Field({ label: 'Deadline to start (optional)', htmlFor: 'quiz-deadline', hint: 'Participants can no longer start after this date and time (checked against master server timer). Leave blank for none.', control: Inp({ type: 'datetime-local', id: 'quiz-deadline', value: currentQuiz.deadline || '' }) })}
+          <div id="quiz-time-window-info" style="display:none"></div>
         </div>
       </div>
 
@@ -607,9 +608,10 @@ function bindEvents(app) {
   const quizPassingInput = app.querySelector('#quiz-passing');
   if (quizPassingInput) quizPassingInput.oninput = e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); };
   const quizStartTimeInput = app.querySelector('#quiz-start-time');
-  if (quizStartTimeInput) quizStartTimeInput.oninput = e => { currentQuiz.startTime = e.target.value || ''; markDirty(); };
+  if (quizStartTimeInput) quizStartTimeInput.oninput = e => { currentQuiz.startTime = e.target.value || ''; updateTimeWindowInfo(app); markDirty(); };
   const quizDeadlineInput = app.querySelector('#quiz-deadline');
-  if (quizDeadlineInput) quizDeadlineInput.oninput = e => { currentQuiz.deadline = e.target.value || ''; markDirty(); };
+  if (quizDeadlineInput) quizDeadlineInput.oninput = e => { currentQuiz.deadline = e.target.value || ''; updateTimeWindowInfo(app); markDirty(); };
+  updateTimeWindowInfo(app);
   const quizCertTemplateSel = app.querySelector('#quiz-cert-template');
   if (quizCertTemplateSel) quizCertTemplateSel.onchange = e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); };
   const quizAuthModeSel = app.querySelector('#quiz-auth-mode');
@@ -952,7 +954,60 @@ async function addQuestion(app, type) {
   renderPage(app);
 }
 
+function formatWindowDuration(startTimeStr, deadlineStr) {
+  if (!startTimeStr || !deadlineStr) return null;
+  const start = new Date(startTimeStr);
+  const end = new Date(deadlineStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+
+  const diffMs = end.getTime() - start.getTime();
+  if (diffMs <= 0) {
+    return { valid: false, message: 'Start time must be earlier than the deadline (end time).' };
+  }
+
+  const totalMins = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMins / (24 * 60));
+  const hours = Math.floor((totalMins % (24 * 60)) / 60);
+  const mins = totalMins % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+  if (hours > 0) parts.push(`${hours} hr${hours > 1 ? 's' : ''}`);
+  if (mins > 0 || parts.length === 0) parts.push(`${mins} min${mins !== 1 ? 's' : ''}`);
+
+  return { valid: true, durationText: parts.join(' ') };
+}
+
+function updateTimeWindowInfo(app) {
+  const infoEl = app.querySelector('#quiz-time-window-info');
+  if (!infoEl) return;
+
+  const res = formatWindowDuration(currentQuiz.startTime, currentQuiz.deadline);
+  if (!res) {
+    infoEl.innerHTML = '';
+    infoEl.style.display = 'none';
+  } else if (!res.valid) {
+    infoEl.style.display = 'block';
+    infoEl.style.cssText = 'margin-top:14px; padding:10px 14px; border-radius:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); color:var(--red); font-size:13.5px; display:flex; align-items:center; gap:8px; font-weight:500';
+    infoEl.innerHTML = `${Icon('alert-circle', 16)}<span>${res.message}</span>`;
+  } else {
+    infoEl.style.display = 'block';
+    infoEl.style.cssText = 'margin-top:14px; padding:10px 14px; border-radius:8px; background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.25); color:var(--blue); font-size:13.5px; display:flex; align-items:center; gap:8px; font-weight:500';
+    infoEl.innerHTML = `${Icon('clock', 16)}<span>Time window duration: <strong>${res.durationText}</strong></span>`;
+  }
+}
+
 function validateQuiz() {
+  if (currentQuiz.startTime && currentQuiz.deadline) {
+    const start = new Date(currentQuiz.startTime);
+    const end = new Date(currentQuiz.deadline);
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && start >= end) {
+      activeTab = 'evaluation';
+      showToast('Start time must be earlier than the deadline (end time)', 'error');
+      return false;
+    }
+  }
+
   for (let i = 0; i < currentQuiz.questions.length; i++) {
     const q = currentQuiz.questions[i];
     if (!q || !q.text || q.text.trim() === '') {

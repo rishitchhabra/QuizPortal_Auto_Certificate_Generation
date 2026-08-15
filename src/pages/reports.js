@@ -2,7 +2,7 @@ import { getAllQuizzes, getQuizReport } from '../store.js';
 import { renderNavbar, showToast, escapeHtml, bindNavbar, formatTime, copyTextToClipboard, renderAccessDenied, sortBatches } from '../utils.js';
 import { Icon, Badge, StatCard, EmptyState } from '../components.js';
 import { requireAdmin, hasPermission, currentUser } from '../auth.js';
-import * as XLSX from 'xlsx';
+import { exportBatchSummary, exportStudentReport } from '../exportUtils.js';
 
 export async function renderReports(app, params) {
   if (!requireAdmin()) return;
@@ -102,8 +102,6 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
   const report = await getQuizReport(quizId).catch(e => { showToast(e.message || 'Failed to load report', 'error'); return null; });
   if (!report) { window.location.hash = '#/reports'; return; }
 
-  const qAccuracy = report.studentRows.filter(r => r.attempted).length;
-
   const studentBatches = sortBatches(Array.from(new Set(report.studentRows.map(s => s.classSection || ''))));
   const sortedBatchSummary = sortBatches(report.batches.map(b => b.batch || '')).map(name => report.batches.find(b => (b.batch || '') === name)).filter(Boolean);
 
@@ -130,7 +128,12 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
             <h2 class="section-title" style="font-size:20px">Batch / class-wise</h2>
             <p class="section-sub">Performance across each class-section</p>
           </div>
-          ${hasPermission('reports', 'export') ? `<div class="section-action"><button class="btn btn-secondary btn-sm" id="btn-export-batch">${Icon('download', 14)}<span>Export Excel</span></button></div>` : ''}
+          ${hasPermission('reports', 'export') ? `
+            <div class="section-action flex gap-xs" style="display:flex; gap:8px">
+              <button class="btn btn-secondary btn-sm" id="btn-export-batch-excel">${Icon('file-text', 14)}<span>Export Excel</span></button>
+              <button class="btn btn-secondary btn-sm" id="btn-export-batch-pdf">${Icon('download', 14)}<span>Export PDF</span></button>
+            </div>
+          ` : ''}
         </div>
 
         ${report.batches.length > 0 ? `
@@ -173,7 +176,12 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
             <h2 class="section-title" style="font-size:20px">Student-wise</h2>
             <p class="section-sub">Every mapped student — score, pass status, and who did not attempt</p>
           </div>
-          ${hasPermission('reports', 'export') ? `<div class="section-action"><button class="btn btn-secondary btn-sm" id="btn-export-students">${Icon('download', 14)}<span>Export Excel</span></button></div>` : ''}
+          ${hasPermission('reports', 'export') ? `
+            <div class="section-action flex gap-xs" style="display:flex; gap:8px">
+              <button class="btn btn-secondary btn-sm" id="btn-export-students-excel">${Icon('file-text', 14)}<span>Export Excel</span></button>
+              <button class="btn btn-secondary btn-sm" id="btn-export-students-pdf">${Icon('download', 14)}<span>Export PDF</span></button>
+            </div>
+          ` : ''}
         </div>
 
         ${report.studentRows.length > 0 ? `
@@ -194,11 +202,20 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
 
   bindNavbar(app);
 
-  app.querySelector('#btn-export-batch')?.addEventListener('click', () => {
-    exportExcel('batch', report.batches, report.quiz.title);
+  app.querySelector('#btn-export-batch-excel')?.addEventListener('click', () => {
+    exportBatchSummary({ batches: report.batches, quizTitle: report.quiz.title, format: 'excel' });
   });
-  app.querySelector('#btn-export-students')?.addEventListener('click', () => {
-    exportExcel('students', report.studentRows, report.quiz.title);
+  app.querySelector('#btn-export-batch-pdf')?.addEventListener('click', () => {
+    exportBatchSummary({ batches: report.batches, quizTitle: report.quiz.title, format: 'pdf' });
+  });
+
+  const getActiveStudentBatch = () => app.querySelector('#student-batch-filter')?.value || '';
+
+  app.querySelector('#btn-export-students-excel')?.addEventListener('click', () => {
+    exportStudentReport({ studentRows: report.studentRows, quizTitle: report.quiz.title, batchFilter: getActiveStudentBatch(), format: 'excel' });
+  });
+  app.querySelector('#btn-export-students-pdf')?.addEventListener('click', () => {
+    exportStudentReport({ studentRows: report.studentRows, quizTitle: report.quiz.title, batchFilter: getActiveStudentBatch(), format: 'pdf' });
   });
 
   const studentContainer = app.querySelector('#student-wise-container');
@@ -208,14 +225,14 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
     let searchTerm = '';
     let selectedBatch = '';
 
-    if (searchInput) searchInput.addEventListener('input', e => { searchTerm = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm); });
-    if (batchFilter) batchFilter.addEventListener('change', e => { selectedBatch = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm); });
+    if (searchInput) searchInput.addEventListener('input', e => { searchTerm = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title); });
+    if (batchFilter) batchFilter.addEventListener('change', e => { selectedBatch = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title); });
 
-    renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm);
+    renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title);
   }
 }
 
-function renderStudentGroups(container, rows, batch, term) {
+function renderStudentGroups(container, rows, batch, term, quizTitle = '') {
   const q = (term || '').trim().toLowerCase();
   const filtered = rows.filter(s => {
     if (batch && (s.classSection || '') !== batch) return false;
@@ -239,6 +256,13 @@ function renderStudentGroups(container, rows, batch, term) {
           <h2 class="section-title" style="font-size:18px">${escapeHtml(cls || 'Unassigned')}</h2>
           <p class="section-sub">${grouped[cls].length} students${cls ? '' : ' · no Class-Section on record'}</p>
         </div>
+        ${hasPermission('reports', 'export') ? `
+          <div class="flex gap-xs" style="display:flex; gap:6px; align-items:center">
+            <span class="xs muted" style="margin-right:2px; font-weight:600">Export batch:</span>
+            <button class="btn btn-secondary btn-xs btn-export-single-batch" data-batch="${escapeHtml(cls)}" data-format="excel">${Icon('file-text', 12)}<span>Excel</span></button>
+            <button class="btn btn-secondary btn-xs btn-export-single-batch" data-batch="${escapeHtml(cls)}" data-format="pdf">${Icon('download', 12)}<span>PDF</span></button>
+          </div>
+        ` : ''}
       </div>
       <div class="table-wrap">
         <div class="table-wrap-scroll">
@@ -277,75 +301,14 @@ function renderStudentGroups(container, rows, batch, term) {
       </div>
     </div>
   `).join('');
-}
 
-function exportExcel(kind, rows, quizTitle) {
-  const filename = `report_${kind}_${(quizTitle || '').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') || 'quiz'}_${Date.now()}.xlsx`;
-  const wb = XLSX.utils.book_new();
-  if (kind === 'batch') {
-    const data = rows.map(b => ({
-      'Batch': b.batch || 'Unassigned',
-      'Total Students': b.totalStudents,
-      'Attempted': b.attempted,
-      'Not Attempted': b.notAttempted,
-      'Passed': b.passed,
-      'Avg %': b.avgPercent,
-      'Max %': b.maxPercent,
-      'Min %': b.minPercent
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws, 'Batch Report');
-  } else {
-    XLSX.utils.book_append_sheet(wb, exportStudentSheet(rows), 'Student Report');
-  }
-  XLSX.writeFile(wb, filename);
-  showToast('Report exported as Excel');
-}
-
-function exportStudentSheet(rows) {
-  const headers = ['Name', 'User ID', 'Batch', 'Attempted', 'Score', 'Percentage', 'Passed', 'Time Taken'];
-  const groupKeys = sortBatches(Array.from(new Set(rows.map(s => s.classSection || ''))));
-  const aoa = [];
-  const sectionRows = [];
-  const headerRows = [];
-
-  groupKeys.forEach(batch => {
-    const group = rows.filter(s => (s.classSection || '') === batch);
-    sectionRows.push(aoa.length);
-    aoa.push([`${batch || 'Unassigned'} — ${group.length} student${group.length === 1 ? '' : 's'}`]);
-    headerRows.push(aoa.length);
-    aoa.push(headers);
-    group.forEach(s => aoa.push([
-      s.name,
-      s.userId,
-      s.classSection,
-      s.attempted ? 'Yes' : 'No',
-      s.attempted ? `${s.score}/${s.totalPoints}` : '',
-      s.percent != null ? `${s.percent}%` : '',
-      s.passed ? 'Yes' : 'No',
-      s.attempted ? formatTime(s.timeTaken) : ''
-    ]));
-    aoa.push([]);
+  container.querySelectorAll('.btn-export-single-batch').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const b = btn.dataset.batch;
+      const fmt = btn.dataset.format;
+      exportStudentReport({ studentRows: rows, quizTitle, batchFilter: b, format: fmt });
+    });
   });
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [
-    { wch: 26 }, { wch: 18 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 12 }
-  ];
-  sectionRows.forEach(ri => styleSheetRow(ws, ri, { bold: true, fill: 'EEF0FF', color: '3B3FE0' }));
-  headerRows.forEach(ri => styleSheetRow(ws, ri, { bold: true, fill: 'F1F5F9' }));
-  return ws;
-}
-
-function styleSheetRow(ws, r, { bold, fill, color }) {
-  for (let c = 0; c < 8; c++) {
-    const cell = ws[XLSX.utils.encode_cell({ r, c })];
-    if (!cell) continue;
-    cell.s = {
-      font: { bold, color: { rgb: color || '1E293B' } },
-      fill: fill ? { fgColor: { rgb: fill } } : undefined
-    };
-  }
 }
 
 // Skeleton shown while the report is being generated

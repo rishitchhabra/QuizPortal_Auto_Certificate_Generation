@@ -4,7 +4,47 @@ import { initGoogleAuth, renderGoogleButton, getGoogleClientId } from '../auth.j
 import { Icon, Badge } from '../components.js';
 
 let quiz = null, participant = {}, answers = {};
-let timerInterval = null, timeLeft = 0, quizStarted = false, quizSubmitted = false;
+let timerInterval = null, availabilityTimer = null, timeLeft = 0, quizStarted = false, quizSubmitted = false;
+
+async function checkQuizAvailability(app, targetQuiz = quiz) {
+  if (!targetQuiz) return false;
+  if (!targetQuiz.isPublished) {
+    renderNotice(app, { icon: Icon('pause', 26), title: 'Quiz currently inactive', desc: 'The quiz organizer has paused or stopped this quiz. Access is currently disabled.' });
+    return false;
+  }
+
+  const serverNow = await getServerTime();
+
+  if (targetQuiz.startTime) {
+    const startDate = new Date(targetQuiz.startTime);
+    if (!isNaN(startDate.getTime()) && serverNow < startDate) {
+      renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz not started yet', desc: `This quiz is scheduled to start on <strong>${startDate.toLocaleString()}</strong>. Please check back at the scheduled start time.` });
+      return false;
+    }
+  }
+
+  if (targetQuiz.deadline) {
+    const deadlineDate = new Date(targetQuiz.deadline);
+    if (!isNaN(deadlineDate.getTime()) && serverNow > deadlineDate) {
+      renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz deadline passed', desc: `The deadline to attempt this quiz was <strong>${deadlineDate.toLocaleString()}</strong>. New attempts are closed.` });
+      return false;
+    }
+
+    if (!quizStarted && !quizSubmitted) {
+      if (availabilityTimer) clearTimeout(availabilityTimer);
+      const remainingMs = deadlineDate.getTime() - serverNow.getTime();
+      if (remainingMs > 0 && remainingMs < 24 * 60 * 60 * 1000) {
+        availabilityTimer = setTimeout(async () => {
+          if (!quizStarted && !quizSubmitted) {
+            await checkQuizAvailability(app, targetQuiz);
+          }
+        }, remainingMs + 500);
+      }
+    }
+  }
+
+  return true;
+}
 
 export async function renderTakeQuiz(app, params) {
   scrollPageTop();
@@ -16,31 +56,12 @@ export async function renderTakeQuiz(app, params) {
     return;
   }
 
-  if (!quiz.isPublished) {
-    renderNotice(app, { icon: Icon('pause', 26), title: 'Quiz currently inactive', desc: 'The quiz organizer has paused or stopped this quiz. Access is currently disabled.' });
-    return;
-  }
-
-  const serverNow = await getServerTime();
-
-  if (quiz.startTime) {
-    const startDate = new Date(quiz.startTime);
-    if (!isNaN(startDate.getTime()) && serverNow < startDate) {
-      renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz not started yet', desc: `This quiz is scheduled to start on <strong>${startDate.toLocaleString()}</strong>. Please check back at the scheduled start time.` });
-      return;
-    }
-  }
-
-  if (quiz.deadline) {
-    const deadlineDate = new Date(quiz.deadline);
-    if (!isNaN(deadlineDate.getTime()) && serverNow > deadlineDate) {
-      renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz deadline passed', desc: `The deadline to attempt this quiz was <strong>${deadlineDate.toLocaleString()}</strong>. New attempts are closed.` });
-      return;
-    }
-  }
-
   answers = {}; quizStarted = false; quizSubmitted = false; participant = {};
   if (timerInterval) clearInterval(timerInterval);
+  if (availabilityTimer) { clearTimeout(availabilityTimer); availabilityTimer = null; }
+
+  const isAvailable = await checkQuizAvailability(app, quiz);
+  if (!isAvailable) return () => { if (timerInterval) clearInterval(timerInterval); if (availabilityTimer) clearTimeout(availabilityTimer); };
 
   quiz.authMode = quiz.authMode || 'google';
   quiz.allowedBatches = Array.isArray(quiz.allowedBatches) ? quiz.allowedBatches : [];
@@ -64,7 +85,10 @@ export async function renderTakeQuiz(app, params) {
       renderParticipantForm(app);
     }
   }
-  return () => { if (timerInterval) clearInterval(timerInterval); };
+  return () => {
+    if (timerInterval) clearInterval(timerInterval);
+    if (availabilityTimer) clearTimeout(availabilityTimer);
+  };
 }
 
 async function renderUserIdSignIn(app) {
@@ -105,6 +129,7 @@ async function renderUserIdSignIn(app) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!(await checkQuizAvailability(app, quiz))) return;
     const raw = input.value.trim().toLowerCase();
     if (!raw) { errEl.textContent = 'Please enter your User ID.'; errEl.style.color = 'var(--red)'; return; }
     errEl.textContent = 'Checking…';
@@ -267,7 +292,8 @@ function renderGoogleSignIn(app, clientId) {
     </div>`;
 
   bindNavbar(app);
-  const onSignIn = (user) => {
+  const onSignIn = async (user) => {
+    if (!(await checkQuizAvailability(app, quiz))) return;
     participant.name = user.name;
     participant.email = user.email;
     renderParticipantForm(app);
@@ -357,7 +383,8 @@ async function renderParticipantForm(app) {
     </div>`;
 
   bindNavbar(app);
-  app.querySelector('#btn-start-quiz').addEventListener('click', () => {
+  app.querySelector('#btn-start-quiz').addEventListener('click', async () => {
+    if (!(await checkQuizAvailability(app, quiz))) return;
     if (quiz.collectPhone) participant.phone = app.querySelector('#p-phone')?.value?.trim() || '';
     if (quiz.collectOrg) participant.org = app.querySelector('#p-org')?.value?.trim() || '';
 
@@ -580,6 +607,18 @@ function startTimer() {
 
 async function submitQuiz(force = false) {
   if (quizSubmitted) return;
+
+  if (quiz?.deadline) {
+    const serverNow = await getServerTime();
+    const deadlineDate = new Date(quiz.deadline);
+    if (!isNaN(deadlineDate.getTime()) && serverNow > deadlineDate) {
+      if (timerInterval) clearInterval(timerInterval);
+      sessionStorage.removeItem(`quiz_end_time_${quiz?.id}`);
+      renderNotice(document.getElementById('app') || app, { icon: Icon('clock', 26), title: 'Quiz deadline passed', desc: `The deadline to attempt this quiz was <strong>${deadlineDate.toLocaleString()}</strong>. Submissions are no longer accepted.` });
+      return;
+    }
+  }
+
   quizSubmitted = true;
   if (timerInterval) clearInterval(timerInterval);
   sessionStorage.removeItem(`quiz_end_time_${quiz.id}`);
