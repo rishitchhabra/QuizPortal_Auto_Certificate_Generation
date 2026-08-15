@@ -195,11 +195,12 @@ function renderGeneralTab() {
               <label class="field-label" style="margin:0">Quiz Banner</label>
               <span class="badge badge-purple" style="font-weight:600; font-size:11px; display:inline-flex; align-items:center; gap:4px">${Icon('image', 11)} Adaptive</span>
             </div>
-            <div id="quiz-banner-preview-box" style="position:relative; width:100%; min-height:160px; border-radius:12px; overflow:hidden; border:2px dashed var(--border); background:var(--bg-2); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px">
+            <div id="quiz-banner-preview-box" style="position:relative; width:100%; border-radius:12px; overflow:hidden; border:2px solid var(--border); background:var(--bg-2)">
               ${currentQuiz.bannerUrl ? `
-                <img src="${escapeHtml(currentQuiz.bannerUrl)}" alt="Quiz banner" style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0">
+                <img src="${escapeHtml(currentQuiz.bannerUrl)}" alt="Quiz banner" style="width:100%; height:auto; display:block">
                 <button class="btn btn-danger btn-sm" id="btn-remove-banner" style="position:absolute; top:12px; right:12px; z-index:2; box-shadow:0 4px 12px rgba(0,0,0,0.3)">${Icon('trash', 14)} Remove Banner</button>
               ` : `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:32px 16px">
                 <div style="margin-bottom:6px; color:var(--text-3)">${Icon('image', 36)}</div>
                 <div style="font-weight:600; font-size:14px; margin-bottom:4px">No banner mapped</div>
                 <div class="xs muted" style="margin-bottom:12px">Upload your JPG or PNG image (any size) or select a preset template</div>
@@ -207,6 +208,7 @@ function renderGeneralTab() {
                   ${Icon('upload', 14)} <span>Upload Banner (JPG/PNG)</span>
                   <input type="file" class="quiz-banner-file-input" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml" style="display:none">
                 </label>
+                </div>
               `}
             </div>
             ${currentQuiz.bannerUrl ? `

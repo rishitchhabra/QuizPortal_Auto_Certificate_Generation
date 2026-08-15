@@ -238,8 +238,8 @@ function quizIntroHeader() {
   return `
     <div class="quiz-intro">
       ${quiz.bannerUrl ? `
-        <div class="quiz-banner-hero" style="width:100%; max-height:320px; border-radius:14px; overflow:hidden; margin-bottom:20px; box-shadow:0 4px 16px rgba(0,0,0,0.12)">
-          <img src="${escapeHtml(quiz.bannerUrl)}" alt="${escapeHtml(quiz.title)} Banner" style="width:100%; height:auto; display:block; max-height:320px; object-fit:cover">
+        <div class="quiz-banner-hero" style="width:100%; border-radius:14px; overflow:hidden; margin-bottom:20px; box-shadow:0 4px 16px rgba(0,0,0,0.12)">
+          <img src="${escapeHtml(quiz.bannerUrl)}" alt="${escapeHtml(quiz.title)} Banner" style="width:100%; height:auto; display:block">
         </div>
       ` : ''}
       <span class="quiz-intro-icon ${subj.cls}" style="--subj:${subj.color}">${Icon(subj.icon, 24)}</span>
