@@ -118,7 +118,7 @@ export async function renderResponses(app, params) {
                       <button class="acc-header" aria-expanded="false" aria-controls="resp-body-${i}">
                         <span class="acc-icon">${rankBadge}</span>
                         <span class="acc-title">
-                          <span style="display:block">${escapeHtml(sub.participant?.name || 'Anonymous')}</span>
+                          <span style="display:block">${escapeHtml(sub.participant?.name?.trim() || sub.participant?.userId || sub.participant?.email || 'Anonymous')}</span>
                           <span class="xs muted" style="font-weight:500">${escapeHtml(displayClass)}</span>
                         </span>
                         <span class="acc-meta">

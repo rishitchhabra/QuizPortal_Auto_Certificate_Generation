@@ -299,22 +299,24 @@ export async function renderAdminPanel(app) {
 
         ${quizzes.length > 0 ? `
           <div class="table-wrap">
-            <table class="table" id="quiz-table" style="min-width:860px">
-              <thead>
-                <tr>
-                  <th style="width:110px">Status</th>
-                  <th>Quiz</th>
-                  <th style="width:90px">Questions</th>
-                  <th style="width:100px">Responses</th>
-                  <th style="width:150px">Deadline</th>
-                  <th style="width:140px">Last edited</th>
-                  <th style="width:150px; text-align:right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${quizzes.map(q => renderQuizRow(q, subsByQuiz[q.id] || 0, can)).join('')}
-              </tbody>
-            </table>
+            <div class="table-wrap-scroll">
+              <table class="table" id="quiz-table" style="min-width:860px">
+                <thead>
+                  <tr>
+                    <th style="width:110px">Status</th>
+                    <th>Quiz</th>
+                    <th style="width:90px">Questions</th>
+                    <th style="width:100px">Responses</th>
+                    <th style="width:150px">Deadline</th>
+                    <th style="width:140px">Last edited</th>
+                    <th style="width:150px; text-align:right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${quizzes.map(q => renderQuizRow(q, subsByQuiz[q.id] || 0, can)).join('')}
+                </tbody>
+              </table>
+            </div>
           </div>
         ` : `
           <div class="card">

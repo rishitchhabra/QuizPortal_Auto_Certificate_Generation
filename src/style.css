@@ -996,10 +996,11 @@ select {
   overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
-
 .table-wrap-scroll {
   max-height: 520px;
   overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table {
@@ -3723,7 +3724,9 @@ tr:focus-visible {
   }
 
   .feature-grid,
-  .steps {
+  .steps,
+  .grid-3,
+  .grid-4 {
     grid-template-columns: repeat(2, 1fr);
   }
 

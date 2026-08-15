@@ -6,6 +6,15 @@ import { Icon, Badge } from '../components.js';
 let quiz = null, participant = {}, answers = {};
 let timerInterval = null, availabilityTimer = null, timeLeft = 0, quizStarted = false, quizSubmitted = false;
 
+function parseDateIST(dateStr) {
+  if (!dateStr) return new Date(NaN);
+  if (dateStr.endsWith('Z') || dateStr.includes('+') || (dateStr.includes('-') && dateStr.lastIndexOf('-') > 7)) {
+    return new Date(dateStr);
+  }
+  const separator = dateStr.includes('T') ? '' : 'T';
+  return new Date(`${dateStr}${separator}+05:30`);
+}
+
 async function checkQuizAvailability(app, targetQuiz = quiz) {
   if (!targetQuiz) return false;
   if (!targetQuiz.isPublished) {
@@ -16,17 +25,22 @@ async function checkQuizAvailability(app, targetQuiz = quiz) {
   const serverNow = await getServerTime();
 
   if (targetQuiz.startTime) {
-    const startDate = new Date(targetQuiz.startTime);
+    const startDate = parseDateIST(targetQuiz.startTime);
     if (!isNaN(startDate.getTime()) && serverNow < startDate) {
       renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz not started yet', desc: `This quiz is scheduled to start on <strong>${startDate.toLocaleString()}</strong>. Please check back at the scheduled start time.` });
       return false;
     }
   }
 
+  if (targetQuiz.stopResponses) {
+    renderClosedQuizLogin(app, targetQuiz, 'This quiz is no longer accepting responses.');
+    return false;
+  }
+
   if (targetQuiz.deadline) {
-    const deadlineDate = new Date(targetQuiz.deadline);
+    const deadlineDate = parseDateIST(targetQuiz.deadline);
     if (!isNaN(deadlineDate.getTime()) && serverNow > deadlineDate) {
-      renderNotice(app, { icon: Icon('clock', 26), title: 'Quiz deadline passed', desc: `The deadline to attempt this quiz was <strong>${deadlineDate.toLocaleString()}</strong>. New attempts are closed.` });
+      renderClosedQuizLogin(app, targetQuiz, `The deadline to attempt this quiz was ${deadlineDate.toLocaleString()}. New attempts are closed.`);
       return false;
     }
 
@@ -1084,6 +1098,127 @@ async function renderPdfCertPreview() {
     if (wrap && cachedCert.blob) {
       const blobUrl = URL.createObjectURL(cachedCert.blob);
       wrap.innerHTML = `<object data="${blobUrl}" type="application/pdf" style="width:100%; aspect-ratio:900/636; border:none; display:block"></object>`;
+    }
+  }
+}
+
+async function renderClosedQuizLogin(app, targetQuiz, message) {
+  scrollPageTop();
+  const subj = subjectFor(targetQuiz.title || '');
+  const isUserIdAuth = targetQuiz.authMode === 'userid';
+
+  app.innerHTML = `
+    ${renderNavbar()}
+    <div class="page fade-in">
+      <div class="container-take" style="padding-top:24px">
+        <div class="quiz-panel" style="text-align:left">
+          ${quizIntroHeader()}
+
+          <div class="signin-promo ${subj.cls}" style="--subj:${subj.color}">
+            <div class="signin-promo-bubbles"></div>
+            <div class="signin-promo-inner">
+              <div class="signin-promo-icon" style="color: var(--amber)">${Icon('lock', 24)}</div>
+              <div class="signin-promo-title">Responses are closed</div>
+              <div class="signin-promo-sub" style="margin-bottom:20px">${escapeHtml(message)} <br><strong>If you have already attempted the quiz, enter your ID below to view your results and download your certificate.</strong></div>
+
+              ${isUserIdAuth ? `
+                <form id="userid-retrieve-form" class="userid-form" novalidate style="width: 100%; max-width: 400px; margin: 0 auto">
+                  <input type="text" id="userid-retrieve-input" class="input input-lg" placeholder="Enter your User ID (e.g. aaravsharma291)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="User ID" style="text-align: center">
+                  <button type="submit" class="btn btn-primary btn-lg btn-block" style="justify-content:center; margin-top:12px">
+                    ${Icon('search', 16)}<span>View Result / Certificate</span>
+                  </button>
+                  <p class="xs text-3" id="userid-retrieve-err" style="margin-top:12px; text-align:center; min-height:16px"></p>
+                </form>
+              ` : `
+                <div id="google-retrieve-container" class="google-btn-wrap" style="display: flex; justify-content: center"></div>
+                <p class="xs text-3" id="google-retrieve-err" style="margin-top:14px; text-align:center; min-height:16px"></p>
+              `}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  bindNavbar(app);
+
+  if (isUserIdAuth) {
+    const form = app.querySelector('#userid-retrieve-form');
+    const input = app.querySelector('#userid-retrieve-input');
+    const errEl = app.querySelector('#userid-retrieve-err');
+    const submitBtn = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const raw = input.value.trim().toLowerCase();
+      if (!raw) { errEl.textContent = 'Please enter your User ID.'; errEl.style.color = 'var(--red)'; return; }
+      errEl.textContent = 'Checking…';
+      errEl.style.color = 'var(--text-2)';
+      submitBtn.disabled = true;
+
+      try {
+        const student = (await verifyUserId(raw))?.user || null;
+        if (!student) {
+          errEl.textContent = 'No student found with that User ID. Check with your teacher.';
+          errEl.style.color = 'var(--red)';
+          submitBtn.disabled = false;
+          return;
+        }
+
+        const existing = await getSubmissionsByUserId(targetQuiz.id, student.userId).catch(() => []);
+        if (existing.length > 0) {
+          quiz = targetQuiz;
+          participant.userId = student.userId;
+          participant.name = student.name;
+          participant.classSection = student.classSection;
+          renderResults(existing[0]);
+        } else {
+          errEl.textContent = 'No submission was found for this User ID.';
+          errEl.style.color = 'var(--red)';
+          submitBtn.disabled = false;
+        }
+      } catch (err) {
+        errEl.textContent = err.message || 'Something went wrong. Please try again.';
+        errEl.style.color = 'var(--red)';
+        submitBtn.disabled = false;
+      }
+    });
+  } else {
+    const clientId = await getGoogleClientId();
+    const errEl = app.querySelector('#google-retrieve-err');
+    if (!clientId) {
+      errEl.textContent = 'Google Sign-In is not configured.';
+      errEl.style.color = 'var(--red)';
+      return;
+    }
+
+    const onSignIn = async (user) => {
+      errEl.textContent = 'Fetching submissions...';
+      errEl.style.color = 'var(--text-2)';
+      try {
+        const existing = await getSubmissionsByEmail(targetQuiz.id, user.email).catch(() => []);
+        if (existing.length > 0) {
+          quiz = targetQuiz;
+          participant.name = user.name;
+          participant.email = user.email;
+          renderResults(existing[0]);
+        } else {
+          errEl.textContent = 'No attempt was found for your Google account.';
+          errEl.style.color = 'var(--red)';
+        }
+      } catch (err) {
+        errEl.textContent = err.message || 'Something went wrong. Please try again.';
+        errEl.style.color = 'var(--red)';
+      }
+    };
+
+    const inited = initGoogleAuth(clientId, onSignIn);
+    if (inited) {
+      setTimeout(() => renderGoogleButton('google-retrieve-container', clientId), 200);
+    } else {
+      setTimeout(() => {
+        const inited2 = initGoogleAuth(clientId, onSignIn);
+        if (inited2) renderGoogleButton('google-retrieve-container', clientId);
+      }, 1500);
     }
   }
 }

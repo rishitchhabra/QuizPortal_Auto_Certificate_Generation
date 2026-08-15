@@ -270,10 +270,60 @@ export async function uploadQuestionImage(file) {
   return response.json();
 }
 
-// Quiz banner image upload — adaptive, keeps original size
+export async function compressImageAdaptive(file) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file;
+  if (file.type.includes('svg')) return file; // Do not modify SVG vector graphics
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      
+      const maxDim = 1200;
+      let width = img.width;
+      let height = img.height;
+
+      // Scale down proportionally if larger than maxDim
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const isPng = file.type === 'image/png';
+      // Compress to JPEG with 0.8 quality (highly optimized for size) or PNG
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(file);
+        const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, isPng ? '.png' : '.jpg'), {
+          type: isPng ? 'image/png' : 'image/jpeg'
+        });
+        resolve(compressedFile);
+      }, isPng ? 'image/png' : 'image/jpeg', 0.8);
+    };
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+}
+
+// Quiz banner image upload — adaptive, keeps original aspect ratio but optimizes size for WhatsApp preview
 export async function uploadQuizBanner(file) {
+  const processedFile = await compressImageAdaptive(file);
   const formData = new FormData();
-  formData.append('banner', file);
+  formData.append('banner', processedFile);
   const headers = new Headers();
   const session = getAuthSession();
   if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
@@ -291,7 +341,7 @@ export async function uploadQuizBanner(file) {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(processedFile);
   });
 }
 

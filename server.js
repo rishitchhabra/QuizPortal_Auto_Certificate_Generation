@@ -434,7 +434,7 @@ app.post('/api/admin-login', asyncHandler(async (req, res) => {
 // Teacher / staff login — returns a session token
 app.post('/api/staff-login', asyncHandler(async (req, res) => {
   const { userId, passwordHash } = req.body || {};
-  const result = await pool.query('SELECT * FROM staff WHERE user_id = $1', [userId || '']);
+  const result = await pool.query('SELECT * FROM staff WHERE LOWER(user_id) = LOWER($1)', [userId || '']);
   const staff = result.rows[0];
   if (!staff) return res.status(401).json({ error: 'invalid id or password' });
   if (staff.password_hash !== passwordHash) return res.status(401).json({ error: 'invalid id or password' });
@@ -538,6 +538,15 @@ app.get('/api/submissions', asyncHandler(async (req, res) => {
   res.json(result.rows.map(mapSubmission));
 }));
 
+function parseDateIST(dateStr) {
+  if (!dateStr) return new Date(NaN);
+  if (dateStr.endsWith('Z') || dateStr.includes('+') || (dateStr.includes('-') && dateStr.lastIndexOf('-') > 7)) {
+    return new Date(dateStr);
+  }
+  const separator = dateStr.includes('T') ? '' : 'T';
+  return new Date(`${dateStr}${separator}+05:30`);
+}
+
 app.post('/api/submissions', asyncHandler(async (req, res) => {
   const body = req.body || {};
 
@@ -550,16 +559,23 @@ app.post('/api/submissions', asyncHandler(async (req, res) => {
         return res.status(403).json({ error: 'This quiz is currently inactive.' });
       }
       const quizData = parseJson(quizRow.data, {});
+      if (quizData.stopResponses) {
+        return res.status(403).json({ error: 'This quiz is no longer accepting responses.' });
+      }
       const now = new Date();
       if (quizData.startTime) {
-        const startDate = new Date(quizData.startTime);
-        if (!isNaN(startDate.getTime()) && now < startDate) {
+        const startDate = parseDateIST(quizData.startTime);
+        // Allow a 1-minute buffer for clock synchronization
+        if (!isNaN(startDate.getTime()) && (now.getTime() + 60000) < startDate.getTime()) {
           return res.status(403).json({ error: 'This quiz has not started yet.' });
         }
       }
       if (quizData.deadline) {
-        const deadlineDate = new Date(quizData.deadline);
-        if (!isNaN(deadlineDate.getTime()) && now > deadlineDate) {
+        const deadlineDate = parseDateIST(quizData.deadline);
+        // Allow a grace period of quiz timer + 5 minutes for submissions started before the deadline
+        const timerMs = (quizData.timerMinutes || 30) * 60 * 1000;
+        const graceMs = 5 * 60 * 1000;
+        if (!isNaN(deadlineDate.getTime()) && now.getTime() > (deadlineDate.getTime() + timerMs + graceMs)) {
           return res.status(403).json({ error: 'The deadline to attempt this quiz has passed.' });
         }
       }
@@ -830,7 +846,7 @@ app.post('/api/staff', asyncHandler(async (req, res) => {
   await requireStaffPermission(req, 'settings', 'manageStaff');
   const body = req.body || {};
   if (!body.name || !body.userId || !body.passwordHash) return res.status(400).json({ error: 'name, userId and passwordHash required' });
-  const dup = await pool.query('SELECT 1 FROM staff WHERE user_id = $1', [body.userId]);
+  const dup = await pool.query('SELECT 1 FROM staff WHERE LOWER(user_id) = LOWER($1)', [body.userId]);
   if (dup.rows.length) return res.status(409).json({ error: 'User ID already exists' });
   await pool.query(
     `INSERT INTO staff (id, name, user_id, password_hash, permissions, assigned_batches) VALUES ($1,$2,$3,$4,$5,$6)`,
@@ -1318,7 +1334,11 @@ app.get(['/take/:quizId', '/share/:quizId', '/quiz/:quizId'], asyncHandler(async
     <meta property="og:url" content="${pageUrl}" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${desc}" />
-    ${bannerUrl ? `<meta property="og:image" content="${bannerUrl}" />` : ''}
+    ${bannerUrl ? `
+    <meta property="og:image" content="${bannerUrl}" />
+    <meta property="og:image:secure_url" content="${bannerUrl}" />
+    <meta property="og:image:type" content="${bannerUrl.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'}" />
+    ` : ''}
     <meta name="twitter:card" content="${bannerUrl ? 'summary_large_image' : 'summary'}" />
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${desc}" />

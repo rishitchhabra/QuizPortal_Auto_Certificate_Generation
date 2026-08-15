@@ -508,8 +508,8 @@ function renderEvaluationTab() {
         <div class="panel">
           ${Field({ label: 'Timer limit (minutes)', htmlFor: 'quiz-timer', control: Inp({ type: 'number', id: 'quiz-timer', value: currentQuiz.timerMinutes, min: '1', max: '300' }) })}
           ${Field({ label: 'Passing score (%)', htmlFor: 'quiz-passing', hint: 'Minimum percentage required to earn a certificate.', control: Inp({ type: 'number', id: 'quiz-passing', value: currentQuiz.passingPercent, min: '0', max: '100' }) })}
-          ${Field({ label: 'Start time / Available from (optional)', htmlFor: 'quiz-start-time', hint: 'Participants cannot start before this date and time (checked against master server timer). Leave blank for immediate access.', control: Inp({ type: 'datetime-local', id: 'quiz-start-time', value: currentQuiz.startTime || '' }) })}
-          ${Field({ label: 'Deadline to start (optional)', htmlFor: 'quiz-deadline', hint: 'Participants can no longer start after this date and time (checked against master server timer). Leave blank for none.', control: Inp({ type: 'datetime-local', id: 'quiz-deadline', value: currentQuiz.deadline || '' }) })}
+          ${Field({ label: 'Start time / Available from (optional)', htmlFor: 'quiz-start-time', hint: 'Participants cannot start before this date and time (checked against master server timer). Leave blank for immediate access.', control: Inp({ type: 'datetime-local', id: 'quiz-start-time', value: toLocalDatetimeLocal(currentQuiz.startTime) }) })}
+          ${Field({ label: 'Deadline to start (optional)', htmlFor: 'quiz-deadline', hint: 'Participants can no longer start after this date and time (checked against master server timer). Leave blank for none.', control: Inp({ type: 'datetime-local', id: 'quiz-deadline', value: toLocalDatetimeLocal(currentQuiz.deadline) }) })}
           <div id="quiz-time-window-info" style="display:none"></div>
         </div>
       </div>
@@ -518,6 +518,7 @@ function renderEvaluationTab() {
         <div class="q-editor-top"><div class="q-editor-title">Behaviour</div></div>
         <div class="panel" style="display:flex; flex-direction:column">
           ${Toggle({ id: 'quiz-limit-user', checked: currentQuiz.limitPerUser, label: 'One response per Google account', hint: 'Prevents a student from submitting more than once.' })}
+          ${Toggle({ id: 'quiz-stop-responses', checked: !!currentQuiz.stopResponses, label: 'Stop taking responses', hint: 'Prevent new attempts, but allow past attempts to download their certificates.' })}
           ${Toggle({ id: 'quiz-shuffle', checked: currentQuiz.shuffleQuestions, label: 'Shuffle question order', hint: 'Present questions in a different order to each student.' })}
           ${Toggle({ id: 'quiz-shuffle-options', checked: !!currentQuiz.shuffleOptions, label: 'Shuffle options order', hint: 'Randomize the order of answer choices (A, B, C, D) for each question.' })}
           ${Toggle({ id: 'quiz-show-summary', checked: currentQuiz.showSummary !== false, label: 'Show result summary', hint: 'Show score, time and pass status after submission.' })}
@@ -700,9 +701,9 @@ function bindEvents(app) {
   const quizPassingInput = app.querySelector('#quiz-passing');
   if (quizPassingInput) quizPassingInput.oninput = e => { currentQuiz.passingPercent = parseInt(e.target.value) || 0; markDirty(); };
   const quizStartTimeInput = app.querySelector('#quiz-start-time');
-  if (quizStartTimeInput) quizStartTimeInput.oninput = e => { currentQuiz.startTime = e.target.value || ''; updateTimeWindowInfo(app); markDirty(); };
+  if (quizStartTimeInput) quizStartTimeInput.oninput = e => { currentQuiz.startTime = e.target.value ? new Date(e.target.value).toISOString() : ''; updateTimeWindowInfo(app); markDirty(); };
   const quizDeadlineInput = app.querySelector('#quiz-deadline');
-  if (quizDeadlineInput) quizDeadlineInput.oninput = e => { currentQuiz.deadline = e.target.value || ''; updateTimeWindowInfo(app); markDirty(); };
+  if (quizDeadlineInput) quizDeadlineInput.oninput = e => { currentQuiz.deadline = e.target.value ? new Date(e.target.value).toISOString() : ''; updateTimeWindowInfo(app); markDirty(); };
   updateTimeWindowInfo(app);
   const quizCertTemplateSel = app.querySelector('#quiz-cert-template');
   if (quizCertTemplateSel) quizCertTemplateSel.onchange = e => { currentQuiz.certificateTemplateId = e.target.value; markDirty(); };
@@ -721,6 +722,7 @@ function bindEvents(app) {
   bindToggle(app, 'quiz-collect-phone', 'collectPhone');
   bindToggle(app, 'quiz-collect-org', 'collectOrg');
   bindToggle(app, 'quiz-limit-user', 'limitPerUser');
+  bindToggle(app, 'quiz-stop-responses', 'stopResponses');
   bindToggle(app, 'quiz-shuffle', 'shuffleQuestions');
   bindToggle(app, 'quiz-shuffle-options', 'shuffleOptions');
   bindToggle(app, 'quiz-show-summary', 'showSummary');
@@ -1162,4 +1164,16 @@ function validateQuiz() {
     }
   }
   return true;
+}
+
+function toLocalDatetimeLocal(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
 }
