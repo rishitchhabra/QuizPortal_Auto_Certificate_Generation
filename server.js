@@ -20,6 +20,7 @@ const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'admin';
 
 const app = express();
+app.set('trust proxy', 1); // Trust first proxy (nginx/Cloudflare) so req.protocol = 'https'
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
@@ -1291,7 +1292,9 @@ app.get(['/take/:quizId', '/share/:quizId', '/quiz/:quizId'], asyncHandler(async
         const quiz = typeof qRes.rows[0].data === 'string' ? JSON.parse(qRes.rows[0].data) : qRes.rows[0].data;
         if (quiz) {
           const host = req.get('host') || 'localhost:3000';
-          const protocol = req.protocol || 'http';
+          // Behind reverse proxy (nginx/Cloudflare), req.protocol is 'http' because proxy terminates SSL.
+          // Use X-Forwarded-Proto header, or default to https for non-localhost domains.
+          const protocol = req.get('x-forwarded-proto') || req.protocol || (host.includes('localhost') ? 'http' : 'https');
           const baseUrl = `${protocol}://${host}`;
 
           // Sanitize for HTML attribute safety
