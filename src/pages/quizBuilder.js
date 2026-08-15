@@ -186,29 +186,32 @@ function renderGeneralTab() {
       </div>
       <div class="panel">
         <p class="muted sm" style="margin-bottom:16px">
-          Map a banner to this quiz. When you share the quiz link on WhatsApp, Telegram, Twitter, or Slack, this banner image will pop up automatically as the link preview image.
+          Map a banner to this quiz (Standard <strong>1200 × 630 px</strong> aspect ratio). When you share the quiz link on WhatsApp, Telegram, Twitter, or Slack, this banner image will pop up automatically in the link preview card.
         </p>
 
         <div style="display:grid; grid-template-columns: 1fr 340px; gap:20px; align-items:start; flex-wrap:wrap">
           <div>
-            <label class="field-label" style="margin-bottom:8px">Quiz Banner</label>
-            <div id="quiz-banner-preview-box" style="position:relative; width:100%; height:180px; border-radius:12px; overflow:hidden; border:2px dashed var(--border); background:var(--bg-2); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <label class="field-label" style="margin:0">Quiz Banner</label>
+              <span class="badge badge-purple" style="font-weight:600; font-size:11px; display:inline-flex; align-items:center; gap:4px">${Icon('image', 11)} 1200 × 630 px</span>
+            </div>
+            <div id="quiz-banner-preview-box" style="position:relative; width:100%; aspect-ratio: 1200 / 630; max-height:220px; border-radius:12px; overflow:hidden; border:2px dashed var(--border); background:var(--bg-2); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px">
               ${currentQuiz.bannerUrl ? `
                 <img src="${escapeHtml(currentQuiz.bannerUrl)}" alt="Quiz banner" style="width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0">
                 <button class="btn btn-danger btn-sm" id="btn-remove-banner" style="position:absolute; top:12px; right:12px; z-index:2; box-shadow:0 4px 12px rgba(0,0,0,0.3)">${Icon('trash', 14)} Remove Banner</button>
               ` : `
-                <div style="margin-bottom:10px; color:var(--text-3)">${Icon('image', 36)}</div>
+                <div style="margin-bottom:6px; color:var(--text-3)">${Icon('image', 36)}</div>
                 <div style="font-weight:600; font-size:14px; margin-bottom:4px">No banner mapped</div>
-                <div class="xs muted" style="margin-bottom:12px">Upload your JPG or PNG image, or select a preset template below</div>
+                <div class="xs muted" style="margin-bottom:12px">Upload JPG/PNG (automatically scaled to 1200 × 630 px) or select a template</div>
                 <label class="btn btn-secondary btn-sm" style="cursor:pointer">
-                  ${Icon('upload', 14)} <span>Upload Banner (JPG/PNG)</span>
+                  ${Icon('upload', 14)} <span>Upload Banner (1200×630)</span>
                   <input type="file" class="quiz-banner-file-input" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml" style="display:none">
                 </label>
               `}
             </div>
             ${currentQuiz.bannerUrl ? `
               <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center">
-                <span class="xs muted">Custom banner mapped</span>
+                <span class="xs muted">Banner mapped (1200 × 630 px)</span>
                 <label class="btn btn-ghost btn-xs" style="cursor:pointer">
                   ${Icon('upload', 12)} <span>Change Image</span>
                   <input type="file" class="quiz-banner-file-input" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml" style="display:none">
@@ -219,16 +222,19 @@ function renderGeneralTab() {
 
           <!-- Social Share Card Live Preview -->
           <div>
-            <label class="field-label" style="margin-bottom:8px">Link Share Card Preview</label>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <label class="field-label" style="margin:0">Link Share Preview Card</label>
+              <span class="xs muted" style="font-size:11px">1.91:1 Card</span>
+            </div>
             <div class="card" style="padding:12px; background:var(--bg-2); border:1px solid var(--border); border-radius:12px">
-              <div class="xs muted" style="margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px">Link Popup Card (WhatsApp / Telegram / Twitter)</div>
+              <div class="xs muted" style="margin-bottom:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px">Link Popup Card (WhatsApp / Socials)</div>
               <div style="border-radius:10px; overflow:hidden; border:1px solid var(--border); background:var(--card-bg)">
-                <div style="height:110px; background:var(--bg-3); overflow:hidden; position:relative">
+                <div style="width:100%; aspect-ratio: 1200 / 630; max-height:120px; background:var(--bg-3); overflow:hidden; position:relative">
                   ${currentQuiz.bannerUrl ? `
                     <img src="${escapeHtml(currentQuiz.bannerUrl)}" alt="Share preview" style="width:100%; height:100%; object-fit:cover">
                   ` : `
                     <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:700; background:linear-gradient(135deg, #4f46e5, #7c3aed)">
-                      Quiz Banner Image
+                      1200 × 630 Banner Image
                     </div>
                   `}
                 </div>

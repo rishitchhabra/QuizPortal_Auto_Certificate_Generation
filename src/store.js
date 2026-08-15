@@ -270,10 +270,59 @@ export async function uploadQuestionImage(file) {
   return response.json();
 }
 
-// Quiz banner image upload (.jpg, .png, .webp, .gif)
+export async function resizeImageTo1200x630(file) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file;
+  if (file.type.includes('svg')) return file; // Do not resize vector SVG
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 630;
+      const ctx = canvas.getContext('2d');
+
+      const targetRatio = 1200 / 630;
+      const imgRatio = img.width / img.height;
+      let sw, sh, sx, sy;
+
+      if (imgRatio > targetRatio) {
+        sh = img.height;
+        sw = img.height * targetRatio;
+        sx = (img.width - sw) / 2;
+        sy = 0;
+      } else {
+        sw = img.width;
+        sh = img.width / targetRatio;
+        sx = 0;
+        sy = (img.height - sh) / 2;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, 1200, 630);
+
+      const isPng = file.type === 'image/png';
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(file);
+        const resizedFile = new File([blob], file.name.replace(/\.[^/.]+$/, isPng ? '.png' : '.jpg'), {
+          type: isPng ? 'image/png' : 'image/jpeg'
+        });
+        resolve(resizedFile);
+      }, isPng ? 'image/png' : 'image/jpeg', 0.92);
+    };
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+}
+
+// Quiz banner image upload (.jpg, .png, .webp, .gif) automatically scaled to 1200x630 px
 export async function uploadQuizBanner(file) {
+  const processedFile = await resizeImageTo1200x630(file);
   const formData = new FormData();
-  formData.append('banner', file);
+  formData.append('banner', processedFile);
   const headers = new Headers();
   const session = getAuthSession();
   if (session?.token) headers.set('Authorization', `Bearer ${session.token}`);
@@ -291,7 +340,7 @@ export async function uploadQuizBanner(file) {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = (err) => reject(err);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(processedFile);
   });
 }
 

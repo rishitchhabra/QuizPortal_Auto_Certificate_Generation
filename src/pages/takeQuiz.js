@@ -238,7 +238,7 @@ function quizIntroHeader() {
   return `
     <div class="quiz-intro">
       ${quiz.bannerUrl ? `
-        <div class="quiz-banner-hero" style="width:100%; height:180px; border-radius:14px; overflow:hidden; margin-bottom:20px; box-shadow:0 4px 16px rgba(0,0,0,0.12)">
+        <div class="quiz-banner-hero" style="width:100%; aspect-ratio:1200/630; max-height:260px; border-radius:14px; overflow:hidden; margin-bottom:20px; box-shadow:0 4px 16px rgba(0,0,0,0.12)">
           <img src="${escapeHtml(quiz.bannerUrl)}" alt="${escapeHtml(quiz.title)} Banner" style="width:100%; height:100%; object-fit:cover">
         </div>
       ` : ''}
