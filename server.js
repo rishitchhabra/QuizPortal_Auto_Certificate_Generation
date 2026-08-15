@@ -1292,9 +1292,8 @@ app.get(['/take/:quizId', '/share/:quizId', '/quiz/:quizId'], asyncHandler(async
         const quiz = typeof qRes.rows[0].data === 'string' ? JSON.parse(qRes.rows[0].data) : qRes.rows[0].data;
         if (quiz) {
           const host = req.get('host') || 'localhost:3000';
-          // Behind reverse proxy (nginx/Cloudflare), req.protocol is 'http' because proxy terminates SSL.
-          // Use X-Forwarded-Proto header, or default to https for non-localhost domains.
-          const protocol = req.get('x-forwarded-proto') || req.protocol || (host.includes('localhost') ? 'http' : 'https');
+          // Always use https for production domains. Only use http for localhost dev.
+          const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
           const baseUrl = `${protocol}://${host}`;
 
           // Sanitize for HTML attribute safety
