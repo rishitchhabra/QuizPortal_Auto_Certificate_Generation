@@ -506,7 +506,7 @@ export async function renderAdminPanel(app) {
   // Share link
   app.querySelectorAll('.share-quiz').forEach(b => {
     b.addEventListener('click', () => {
-      const url = `${window.location.origin}/#/take/${b.dataset.id}`;
+      const url = `${window.location.origin}/take/${b.dataset.id}`;
       copyTextToClipboard(url).then(ok => {
         if (ok) showToast('Quiz link copied to clipboard');
         else showToast(url, 'info');
@@ -761,7 +761,7 @@ export function bindDropdowns(root) {
       const action = item.dataset.menuAction;
       const id = dd.id.replace(/^dd-/, '');
       if (action === 'copy') {
-        const url = `${window.location.origin}/#/take/${id}`;
+        const url = `${window.location.origin}/take/${id}`;
         copyTextToClipboard(url).then(ok => {
           if (ok) showToast('Quiz link copied to clipboard');
           else showToast(url, 'info');

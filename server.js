@@ -1267,6 +1267,9 @@ app.use('/static', express.static(path.join(process.cwd(), 'public')));
 app.use(express.static(path.join(process.cwd(), 'dist')));
 
 // Serve dynamic Open Graph meta tags for shared quiz links
+// When a link like https://domain.com/take/abc123 is shared on WhatsApp/Telegram/Twitter,
+// the crawler fetches this URL and reads the OG meta tags from the HTML.
+// For real users (browsers), a small <script> redirects to /#/take/abc123 so the SPA router handles it.
 app.get(['/take/:quizId', '/share/:quizId', '/quiz/:quizId'], asyncHandler(async (req, res) => {
   const quizId = req.params.quizId;
   const indexPath = path.join(process.cwd(), 'dist', 'index.html');
@@ -1275,30 +1278,46 @@ app.get(['/take/:quizId', '/share/:quizId', '/quiz/:quizId'], asyncHandler(async
   }
 
   let html = fs.readFileSync(indexPath, 'utf8');
+
+  // Inject a tiny script that redirects browser users to the SPA hash route
+  // Crawlers (WhatsApp, Telegram, Twitter bots) don't run JS so they just read the OG tags
+  const redirectScript = `<script>if(window.location.pathname.startsWith('/take/')||window.location.pathname.startsWith('/share/')||window.location.pathname.startsWith('/quiz/')){var p=window.location.pathname;window.location.replace('/#'+p);}</script>`;
+  html = html.replace('</head>', `${redirectScript}\n</head>`);
+
   if (quizId) {
     try {
       const qRes = await pool.query('SELECT data FROM quizzes WHERE id = $1', [quizId]);
       if (qRes.rows.length > 0) {
         const quiz = typeof qRes.rows[0].data === 'string' ? JSON.parse(qRes.rows[0].data) : qRes.rows[0].data;
         if (quiz) {
-          const title = (quiz.title || 'Quiz') + ' — Gyan International School';
-          const desc = quiz.description || 'Attempt this quiz on Gyan International School Assessment Portal.';
+          const host = req.get('host') || 'localhost:3000';
+          const protocol = req.protocol || 'http';
+          const baseUrl = `${protocol}://${host}`;
+
+          // Sanitize for HTML attribute safety
+          const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+          const title = esc((quiz.title || 'Quiz') + ' — Gyan International School');
+          const desc = esc(quiz.description || 'Attempt this quiz on Gyan International School Assessment Portal.');
+          const pageUrl = `${baseUrl}/take/${quizId}`;
+
+          // Resolve banner URL — skip data: URLs (SVG templates), crawlers can't render them
           let bannerUrl = quiz.bannerUrl || quiz.banner || '';
+          if (bannerUrl && bannerUrl.startsWith('data:')) {
+            bannerUrl = ''; // data URLs don't work as OG images for social crawlers
+          }
           if (bannerUrl && bannerUrl.startsWith('/')) {
-            const host = req.get('host') || 'localhost:3000';
-            const protocol = req.protocol || 'http';
-            bannerUrl = `${protocol}://${host}${bannerUrl}`;
+            bannerUrl = `${baseUrl}${bannerUrl}`;
           }
 
           const ogMeta = `
     <title>${title}</title>
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="${pageUrl}" />
     <meta property="og:title" content="${title}" />
     <meta property="og:description" content="${desc}" />
     ${bannerUrl ? `<meta property="og:image" content="${bannerUrl}" />` : ''}
-    ${bannerUrl ? `<meta property="og:image:width" content="1200" />` : ''}
-    ${bannerUrl ? `<meta property="og:image:height" content="630" />` : ''}
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:card" content="${bannerUrl ? 'summary_large_image' : 'summary'}" />
     <meta name="twitter:title" content="${title}" />
     <meta name="twitter:description" content="${desc}" />
     ${bannerUrl ? `<meta name="twitter:image" content="${bannerUrl}" />` : ''}

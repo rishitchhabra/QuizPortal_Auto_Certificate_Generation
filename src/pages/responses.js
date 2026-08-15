@@ -222,7 +222,7 @@ export async function renderResponses(app, params) {
   const copyBtn = app.querySelector('#btn-copy-link');
   if (copyBtn) {
     copyBtn.addEventListener('click', async () => {
-      const url = `${window.location.origin}/#/take/${quizId}`;
+      const url = `${window.location.origin}/take/${quizId}`;
       const ok = await copyTextToClipboard(url);
       if (ok) showToast('Quiz link copied to clipboard');
       else showToast(url, 'info');
