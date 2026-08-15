@@ -203,19 +203,19 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
   bindNavbar(app);
 
   app.querySelector('#btn-export-batch-excel')?.addEventListener('click', () => {
-    exportBatchSummary({ batches: report.batches, quizTitle: report.quiz.title, format: 'excel' });
+    exportBatchSummary({ batches: report.batches, quizTitle: report.quiz.title, quizId: report.quiz.id || quizId, format: 'excel' });
   });
   app.querySelector('#btn-export-batch-pdf')?.addEventListener('click', () => {
-    exportBatchSummary({ batches: report.batches, quizTitle: report.quiz.title, format: 'pdf' });
+    exportBatchSummary({ batches: report.batches, quizTitle: report.quiz.title, quizId: report.quiz.id || quizId, format: 'pdf' });
   });
 
   const getActiveStudentBatch = () => app.querySelector('#student-batch-filter')?.value || '';
 
   app.querySelector('#btn-export-students-excel')?.addEventListener('click', () => {
-    exportStudentReport({ studentRows: report.studentRows, quizTitle: report.quiz.title, batchFilter: getActiveStudentBatch(), format: 'excel' });
+    exportStudentReport({ studentRows: report.studentRows, quizTitle: report.quiz.title, quizId: report.quiz.id || quizId, batchFilter: getActiveStudentBatch(), format: 'excel' });
   });
   app.querySelector('#btn-export-students-pdf')?.addEventListener('click', () => {
-    exportStudentReport({ studentRows: report.studentRows, quizTitle: report.quiz.title, batchFilter: getActiveStudentBatch(), format: 'pdf' });
+    exportStudentReport({ studentRows: report.studentRows, quizTitle: report.quiz.title, quizId: report.quiz.id || quizId, batchFilter: getActiveStudentBatch(), format: 'pdf' });
   });
 
   const studentContainer = app.querySelector('#student-wise-container');
@@ -225,14 +225,14 @@ async function renderQuizReport(app, quizzes, quiz, quizId) {
     let searchTerm = '';
     let selectedBatch = '';
 
-    if (searchInput) searchInput.addEventListener('input', e => { searchTerm = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title); });
-    if (batchFilter) batchFilter.addEventListener('change', e => { selectedBatch = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title); });
+    if (searchInput) searchInput.addEventListener('input', e => { searchTerm = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title, report.quiz.id || quizId); });
+    if (batchFilter) batchFilter.addEventListener('change', e => { selectedBatch = e.target.value; renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title, report.quiz.id || quizId); });
 
-    renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title);
+    renderStudentGroups(studentContainer, report.studentRows, selectedBatch, searchTerm, report.quiz.title, report.quiz.id || quizId);
   }
 }
 
-function renderStudentGroups(container, rows, batch, term, quizTitle = '') {
+function renderStudentGroups(container, rows, batch, term, quizTitle = '', quizId = '') {
   const q = (term || '').trim().toLowerCase();
   const filtered = rows.filter(s => {
     if (batch && (s.classSection || '') !== batch) return false;
@@ -306,7 +306,7 @@ function renderStudentGroups(container, rows, batch, term, quizTitle = '') {
     btn.addEventListener('click', () => {
       const b = btn.dataset.batch;
       const fmt = btn.dataset.format;
-      exportStudentReport({ studentRows: rows, quizTitle, batchFilter: b, format: fmt });
+      exportStudentReport({ studentRows: rows, quizTitle, quizId, batchFilter: b, format: fmt });
     });
   });
 }

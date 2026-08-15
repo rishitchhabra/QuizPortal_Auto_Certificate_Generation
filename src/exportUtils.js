@@ -204,12 +204,31 @@ export function exportPDFFile({ filename, title, subtitle, summaryStats = [], co
   doc.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
 }
 
+function getExportDate() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function sanitizePart(str) {
+  if (!str) return '';
+  return String(str).replace(/[^a-zA-Z0-9-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+export function buildExportFilename({ batch, id, quizTitle, defaultId = 'Report' }) {
+  const batchPart = sanitizePart(batch) || 'All_Batches';
+  const idPart = sanitizePart(id) || sanitizePart(quizTitle) || defaultId;
+  const datePart = getExportDate();
+  return `${batchPart}_${idPart}_${datePart}`;
+}
+
 // ============================================================
 // 1. Batch Summary Export (Reports Page)
 // ============================================================
-export function exportBatchSummary({ batches, quizTitle, format = 'excel' }) {
-  const safeQuiz = (quizTitle || 'Quiz').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
-  const filename = `report_batch_summary_${safeQuiz}_${Date.now()}`;
+export function exportBatchSummary({ batches, quizTitle, quizId, format = 'excel' }) {
+  const filename = buildExportFilename({ batch: 'All_Batches', id: quizId, quizTitle, defaultId: 'Batch_Summary' });
 
   if (format === 'pdf') {
     const totalStudents = batches.reduce((s, b) => s + (b.totalStudents || 0), 0);
@@ -242,7 +261,7 @@ export function exportBatchSummary({ batches, quizTitle, format = 'excel' }) {
     exportPDFFile({
       filename: `${filename}.pdf`,
       title: 'Batch Performance Summary',
-      subtitle: `Quiz: ${quizTitle || 'Untitled Quiz'}`,
+      subtitle: `Quiz: ${quizTitle || 'Untitled Quiz'}${quizId ? `  |  ID: ${quizId}` : ''}`,
       summaryStats: [
         { label: 'Batches', value: batches.length },
         { label: 'Total Students', value: totalStudents },
@@ -276,10 +295,8 @@ export function exportBatchSummary({ batches, quizTitle, format = 'excel' }) {
 // ============================================================
 // 2. Student-Wise Report Export (Reports Page)
 // ============================================================
-export function exportStudentReport({ studentRows, quizTitle, batchFilter = '', format = 'excel' }) {
-  const safeQuiz = (quizTitle || 'Quiz').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
-  const safeBatch = batchFilter ? batchFilter.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') : 'all_batches';
-  const filename = `report_students_${safeBatch}_${safeQuiz}_${Date.now()}`;
+export function exportStudentReport({ studentRows, quizTitle, quizId, batchFilter = '', format = 'excel' }) {
+  const filename = buildExportFilename({ batch: batchFilter, id: quizId, quizTitle, defaultId: 'Student_Report' });
 
   let rowsToExport = studentRows || [];
   if (batchFilter) {
@@ -334,7 +351,7 @@ export function exportStudentReport({ studentRows, quizTitle, batchFilter = '', 
     exportPDFFile({
       filename: `${filename}.pdf`,
       title: 'Student Performance Report',
-      subtitle: `Quiz: ${quizTitle || 'Quiz'}${batchFilter ? `  |  Batch: ${batchFilter}` : '  |  All Batches'}`,
+      subtitle: `Quiz: ${quizTitle || 'Quiz'}${quizId ? `  |  ID: ${quizId}` : ''}${batchFilter ? `  |  Batch: ${batchFilter}` : '  |  All Batches'}`,
       summaryStats: [
         { label: 'Students', value: totalCount },
         { label: 'Attempted', value: attemptedCount },
@@ -399,8 +416,7 @@ export function exportStudentMaster({ usersList, batchFilter = '', searchQuery =
     return;
   }
 
-  const safeBatch = batchFilter ? batchFilter.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') : 'all_batches';
-  const filename = `student_master_${safeBatch}_${Date.now()}`;
+  const filename = buildExportFilename({ batch: batchFilter, id: 'Student_Master' });
 
   if (format === 'pdf') {
     const groupKeys = sortBatches(Array.from(new Set(rowsToExport.map(u => u.classSection || ''))));
@@ -464,10 +480,8 @@ export function exportStudentMaster({ usersList, batchFilter = '', searchQuery =
 // ============================================================
 // 4. Leaderboard / Submissions Export (Responses Page)
 // ============================================================
-export function exportLeaderboard({ submissions, quizTitle, batchFilter = '', format = 'excel' }) {
-  const safeQuiz = (quizTitle || 'Quiz').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
-  const safeBatch = batchFilter ? batchFilter.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_') : 'all_batches';
-  const filename = `leaderboard_${safeBatch}_${safeQuiz}_${Date.now()}`;
+export function exportLeaderboard({ submissions, quizTitle, quizId, batchFilter = '', format = 'excel' }) {
+  const filename = buildExportFilename({ batch: batchFilter, id: quizId || quizTitle, defaultId: 'Leaderboard' });
 
   let filtered = [...submissions];
   if (batchFilter) {
@@ -523,7 +537,7 @@ export function exportLeaderboard({ submissions, quizTitle, batchFilter = '', fo
     exportPDFFile({
       filename: `${filename}.pdf`,
       title: 'Quiz Leaderboard & Submissions',
-      subtitle: `Quiz: ${quizTitle || 'Quiz'}${batchFilter ? `  |  Batch: ${batchFilter}` : '  |  All Batches'}`,
+      subtitle: `Quiz: ${quizTitle || 'Quiz'}${quizId ? `  |  ID: ${quizId}` : ''}${batchFilter ? `  |  Batch: ${batchFilter}` : '  |  All Batches'}`,
       summaryStats: [
         { label: 'Total Responses', value: total },
         { label: 'Passed', value: passCount },

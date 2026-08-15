@@ -202,10 +202,10 @@ export async function renderResponses(app, params) {
 
   const getActiveBatch = () => app.querySelector('#resp-batch-filter')?.value || '';
   app.querySelector('#btn-export-resp-excel')?.addEventListener('click', () => {
-    exportLeaderboard({ submissions, quizTitle: quiz.title, batchFilter: getActiveBatch(), format: 'excel' });
+    exportLeaderboard({ submissions, quizTitle: quiz.title, quizId: quiz.id || quizId, batchFilter: getActiveBatch(), format: 'excel' });
   });
   app.querySelector('#btn-export-resp-pdf')?.addEventListener('click', () => {
-    exportLeaderboard({ submissions, quizTitle: quiz.title, batchFilter: getActiveBatch(), format: 'pdf' });
+    exportLeaderboard({ submissions, quizTitle: quiz.title, quizId: quiz.id || quizId, batchFilter: getActiveBatch(), format: 'pdf' });
   });
 
   // Accordion toggle
